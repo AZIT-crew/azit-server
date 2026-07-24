@@ -51,7 +51,7 @@ class CrewTest {
             assertThatThrownBy(() ->
                     Crew.create(name, CrewCategory.RUNNING, Region.SEOUL, "img.png", "ABC123"))
                     .isInstanceOf(BusinessException.class)
-                    .hasFieldOrPropertyWithValue("errorCode", CrewErrorCode.RESERVED_CREW_NAME_KEYWORD);
+                    .hasFieldOrPropertyWithValue("errorCode", CrewErrorCode.UNUSABLE_CREW_NAME_KEYWORD);
         }
 
         @Test
@@ -63,7 +63,7 @@ class CrewTest {
             // when & then
             assertThatThrownBy(() -> crew.updateInfo("AZIT공식크루", "설명"))
                     .isInstanceOf(BusinessException.class)
-                    .hasFieldOrPropertyWithValue("errorCode", CrewErrorCode.RESERVED_CREW_NAME_KEYWORD);
+                    .hasFieldOrPropertyWithValue("errorCode", CrewErrorCode.UNUSABLE_CREW_NAME_KEYWORD);
         }
 
         @Test
@@ -77,6 +77,35 @@ class CrewTest {
 
             // then
             assertThat(crew.getName()).isEqualTo("한강러닝크루");
+        }
+    }
+
+    @Nested
+    @DisplayName("크루명 초성 필터링")
+    class ChosungTest {
+
+        @ParameterizedTest(name = "초성 포함 크루명 \"{0}\" 으로 생성 시 예외 발생")
+        @ValueSource(strings = {
+                "ㅋㅋ러닝크루", "러닝ㅎㅇ크루", "크루ㅇㅈ", "ㅁㅊ크루"
+        })
+        void create_throwsException_whenNameContainsChosung(String name) {
+            // when & then
+            assertThatThrownBy(() ->
+                    Crew.create(name, CrewCategory.RUNNING, Region.SEOUL, "img.png", "ABC123"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", CrewErrorCode.UNUSABLE_CREW_NAME_KEYWORD);
+        }
+
+        @Test
+        @DisplayName("크루명 수정 시 초성이 포함되면 예외가 발생한다.")
+        void updateInfo_throwsException_whenNameContainsChosung() {
+            // given
+            Crew crew = Crew.create("서울러닝크루", CrewCategory.RUNNING, Region.SEOUL, "img.png", "ABC123");
+
+            // when & then
+            assertThatThrownBy(() -> crew.updateInfo("서울러닝ㅋㅋ", "설명"))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", CrewErrorCode.UNUSABLE_CREW_NAME_KEYWORD);
         }
     }
 }
