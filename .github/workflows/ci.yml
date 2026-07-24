@@ -1,4 +1,4 @@
-name: AZIT CI
+name: azit-server CI
 
 on:
   pull_request:
