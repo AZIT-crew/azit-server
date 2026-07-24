@@ -1,5 +1,5 @@
-name: AZIT CD (Deploy)
-run-name: AZIT server deployed to (${{ github.event.inputs.profile }}) by @${{ github.actor }}
+name: azit-server CD (Deploy)
+run-name: azit server deployed to (${{ github.event.inputs.profile }}) by @${{ github.actor }}
 
 on:
   workflow_dispatch:
@@ -166,9 +166,10 @@ jobs:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
           noprefix: true
           status: ${{ needs.build-and-push.result == 'success' && needs.deploy.result == 'success' && 'success' || 'failure' }}
-          title: "🚀 AZIT 서버 배포 결과"
+          title: "🚀 azit-server 배포 결과"
           description: |
             **배포 환경:** `${{ github.event.inputs.profile }}`
+            **버전:** `${{ github.event.inputs.version }}`
             **결과:** ${{ (needs.build-and-push.result == 'success' && needs.deploy.result == 'success') && '✅ 성공' || '❌ 실패' }}
-            **로그 확인:** [GitHub Actions 링크](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            **로그:** [GitHub Actions](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
           color: ${{ (needs.build-and-push.result == 'success' && needs.deploy.result == 'success') && '0x00ff00' || '0xff0000' }}
