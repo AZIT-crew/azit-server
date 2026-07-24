@@ -1,0 +1,82 @@
+language: "ko-KR"
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_instructions:
+    - path: "**/*.java"
+      instructions: |
+        아래 Azit Server 프로젝트 규칙에 따라 리뷰해주세요.
+
+        ## 아키텍처 (헥사고날 아키텍처)
+        - 의존성은 반드시 Adapter → Application → Domain 방향으로만 흘러야 합니다. 역방향 의존(Domain/Application이 Adapter를 참조)이 있으면 반드시 지적합니다.
+        - Domain 계층(domain/model)에 `@Entity`, `@Table`, `@NotBlank` 등 JPA/Bean Validation/Spring 어노테이션이 있으면 반드시 지적합니다.
+        - Domain 계층은 순수 자바 객체(POJO)여야 합니다. 단, Lombok(`@Getter`, `@Builder`, `@NoArgsConstructor`, `@AllArgsConstructor`)과 `BusinessException` 사용은 실용적 예외로 허용합니다.
+        - JPA 엔티티는 `adapter/out/persistence/entity/` 아래 `*Entity` 클래스로만 선언되어야 하며, 도메인 모델과 혼용되어 있으면 지적합니다.
+        - 도메인 모델을 Controller 등 외부 계층에 직접 노출하면(Command/Query DTO로 변환하지 않으면) 반드시 지적합니다.
+        - UseCase(Inbound Port)와 영속성/외부 연동 Port(Outbound Port)가 인터페이스로 분리되어 있는지 확인합니다.
+
+        ## 명명 규칙
+        - `req`, `res`, `svc`, `cnt`, `mgr` 등 모호한 줄임말 사용 시 `Request`, `Response`, `Service`, `Count`, `Manager` 등 풀네임으로 교체를 요청합니다.
+        - `DTO`, `VO`, `Impl`, `API`, `ID` 등 표준 약어는 허용합니다.
+
+        ## 기술 스택
+        - `javax.*` 패키지 사용은 반드시 `jakarta.*`로 교체를 요청합니다.
+        - Java 21 최신 문법(Switch Expressions, Record, Virtual Threads 등) 활용을 제안합니다.
+        - Security Config는 람다 스타일(`.authorizeHttpRequests(auth -> auth...)`)을 사용해야 합니다.
+
+        ## 공통 응답 및 예외 처리
+        - 모든 API 응답이 `CommonResponse.of(CommonSuccessCode.SUCCESS, ...)` 규격을 따르는지 확인합니다.
+        - 비즈니스 예외는 반드시 `BusinessException` + 도메인별 에러 코드(`BaseErrorCode` 구현체)로 처리해야 합니다. `RuntimeException`에 메시지를 하드코딩하는 방식은 반드시 지적합니다.
+        - 에러 코드 Enum의 필드 순서가 `code` → `message` → `status` 순인지 확인합니다.
+
+    - path: "src/main/**/domain/model/**/*.java"
+      instructions: |
+        Domain 모델 전용 리뷰 규칙입니다.
+        - Spring(`@Component`, `@Service` 등), JPA(`@Entity`, `@Id` 등), Jakarta Validation(`@NotBlank`, `@Size` 등) 어노테이션이 있으면 반드시 지적합니다.
+        - 상태 변경이 public setter가 아닌 의미 있는 도메인 메서드(예: `withdraw()`, `updateInfo()`)로 캡슐화되어 있는지 확인합니다.
+        - 비즈니스 규칙 위반 시 `BusinessException` + 도메인 에러코드로 표현되어 있는지 확인합니다.
+
+    - path: "src/main/**/adapter/out/persistence/**/*.java"
+      instructions: |
+        Persistence 어댑터 전용 리뷰 규칙입니다.
+        - JPA Entity 클래스명이 `*Entity`로 끝나는지 확인합니다.
+        - Entity ↔ Domain 모델 매핑이 별도 Mapper 클래스에서 이뤄지는지 확인하고, 매핑 로직이 Entity나 Domain 모델 내부에 섞여 있으면 지적합니다.
+        - PersistenceAdapter가 Outbound Port 인터페이스를 구현하는 구조인지 확인합니다.
+
+    - path: "src/main/**/adapter/in/web/**/*.java"
+      instructions: |
+        Web 어댑터(Controller) 전용 리뷰 규칙입니다.
+        - 응답이 `CommonResponse.of(CommonSuccessCode.SUCCESS, ...)` 규격을 따르는지 확인합니다.
+        - 요청 DTO를 Command/Query로 변환하지 않고 도메인 모델이나 Entity를 그대로 UseCase에 전달하면 지적합니다.
+        - Controller에 UseCase 위임 없이 비즈니스 로직이 직접 구현되어 있으면 반드시 지적합니다.
+
+    - path: "src/main/**/adapter/out/external/**/*.java"
+      instructions: |
+        외부 연동(소셜 로그인, Feign 등) 어댑터 전용 리뷰 규칙입니다.
+        - `@FeignClient`나 외부 API 클라이언트가 UseCase/Service에 직접 주입되어 있으면 반드시 지적합니다. `SocialAuthPort` 같은 Outbound Port 인터페이스를 통해서만 접근해야 합니다.
+        - 프로바이더별 분기(`if/switch (provider == KAKAO)`)가 Application 계층 로직에 섞여 있으면, `SocialAuthComposite`처럼 Port 구현체 목록에서 `getProvider()`로 찾아 위임하는 패턴 사용을 제안합니다.
+        - 외부 API 호출 실패(4xx/5xx, 타임아웃 등)에 대한 예외 처리가 없으면 지적하고, `BusinessException` + 도메인 에러코드로 변환하도록 제안합니다.
+
+    - path: "src/test/**/*.java"
+      instructions: |
+        테스트 코드 리뷰 규칙입니다.
+        - 테스트 메서드명이 `메서드명_상황_기대결과` 구조(예: `withdraw_throwsException_whenAlreadyWithdrawn`)인지 확인합니다.
+        - Domain/Application 계층 핵심 로직에 단위 테스트가 포함되어 있는지 확인합니다.
+        - 외부 의존성(Port, Repository 등)이 Mockito로 격리되어 있는지 확인하고, 실제 DB나 외부 API 호출이 테스트에 섞여 있으면 지적합니다.
+        - 반복 사용되는 테스트 데이터는 별도 Fixture 클래스로 분리되어 있는지 확인합니다.
+
+    - path: "**/*.yml"
+      instructions: |
+        - 민감 정보(비밀번호, API 키, JWT Secret, OAuth Client Secret 등)가 하드코딩되어 있으면 반드시 지적합니다.
+
+chat:
+  auto_reply: true
