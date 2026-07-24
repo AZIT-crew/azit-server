@@ -28,7 +28,7 @@ public enum CrewErrorCode implements BaseErrorCode {
     CANCEL_REJOINING_COOLDOWN("CANCEL_REJOINING_COOLDOWN", "가입 신청 취소 후 1시간이 지나지 않아 재신청이 불가합니다.", HttpStatus.BAD_REQUEST),
     CREW_JOIN_LIMIT_EXCEEDED("CREW_JOIN_LIMIT_EXCEEDED", "최대 3개의 크루까지 가입할 수 있습니다.", HttpStatus.BAD_REQUEST),
     CREW_ALREADY_DISSOLVED("CREW_ALREADY_DISSOLVED", "이미 해산된 크루입니다.", HttpStatus.BAD_REQUEST),
-    RESERVED_CREW_NAME_KEYWORD("RESERVED_CREW_NAME_KEYWORD", "사칭 방지를 위해 사용할 수 없는 단어가 포함되어 있습니다.", HttpStatus.BAD_REQUEST),
+    UNUSABLE_CREW_NAME_KEYWORD("UNUSABLE_CREW_NAME_KEYWORD", "사용할 수 없는 단어입니다.", HttpStatus.BAD_REQUEST),
     INVALID_CREW_NAME_CHARACTERS("INVALID_CREW_NAME_CHARACTERS", "특수문자는 사용할 수 없어요.", HttpStatus.BAD_REQUEST),
 
     // 일정 관련

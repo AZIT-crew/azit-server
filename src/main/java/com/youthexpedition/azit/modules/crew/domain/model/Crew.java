@@ -30,6 +30,7 @@ public class Crew {
     private LocalDateTime updatedAt;
 
     private static final Pattern VALID_NAME_PATTERN = Pattern.compile("^[가-힣a-zA-Z0-9]+$");
+    private static final Pattern CHOSUNG_PATTERN = Pattern.compile("[ㄱ-ㅎ]");
     private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     private static final int CODE_LENGTH = 6;
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -59,6 +60,11 @@ public class Crew {
     }
 
     private static void validateName(String name) {
+        // 크루 이름 초성 제한
+        if (CHOSUNG_PATTERN.matcher(name).find()) {
+            throw new BusinessException(CrewErrorCode.UNUSABLE_CREW_NAME_KEYWORD);
+        }
+
         // 크루 이름은 한글, 숫자, 영어만 가능 (특수문자 제한)
         if (!VALID_NAME_PATTERN.matcher(name).matches()) {
             throw new BusinessException(CrewErrorCode.INVALID_CREW_NAME_CHARACTERS);
@@ -68,7 +74,7 @@ public class Crew {
         // 불가 예약어 검사
         boolean hasReservedKeyword = RESERVED_KEYWORDS.stream().anyMatch(lowerName::contains);
         if (hasReservedKeyword) {
-            throw new BusinessException(CrewErrorCode.RESERVED_CREW_NAME_KEYWORD);
+            throw new BusinessException(CrewErrorCode.UNUSABLE_CREW_NAME_KEYWORD);
         }
     }
 
