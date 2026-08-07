@@ -16,11 +16,14 @@ import com.youthexpedition.azit.modules.member.application.port.in.command.Agree
 import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateMemberProfileCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberPort;
+import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadTermsVersionPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPort;
+import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberTermsConsentPort;
 import com.youthexpedition.azit.modules.member.application.service.mapper.MemberResponseMapper;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
+import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
@@ -56,6 +59,10 @@ class MemberServiceTest {
     @Mock
     private SaveMemberPort saveMemberPort;
     @Mock
+    private LoadMemberSocialAccountPort loadMemberSocialAccountPort;
+    @Mock
+    private SaveMemberSocialAccountPort saveMemberSocialAccountPort;
+    @Mock
     private SaveCrewMemberPort saveCrewMemberPort;
     @Mock
     private SaveCrewPort saveCrewPort;
@@ -83,7 +90,7 @@ class MemberServiceTest {
 
         private final Long memberId = 1L;
         private final String accessToken = "testAccessToken";
-        private final Member member = Member.create(SocialProvider.KAKAO, "socialId", "test@example.com", "password", true, "nickname");
+        private final Member member = Member.create("test@example.com", "password", "nickname");
 
         @Test
         @DisplayName("성공 - 탈퇴 시점이 기록되고 소셜 연동은 해제하지 않음")
@@ -166,7 +173,7 @@ class MemberServiceTest {
         @DisplayName("실패 - 이미 탈퇴한 회원이면 크루 차감 등 부수효과 없이 예외 발생")
         void withdraw_fail_alreadyWithdrawn() {
             // given
-            Member withdrawnMember = Member.create(SocialProvider.KAKAO, "socialId", "test@example.com", "password", true, "nickname");
+            Member withdrawnMember = Member.create("test@example.com", "password", "nickname");
             withdrawnMember.withdraw(LocalDateTime.now());
             doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findById(memberId);
 
@@ -210,9 +217,12 @@ class MemberServiceTest {
         @DisplayName("성공 - 이미 탈퇴한 회원이면 중복 웹훅으로 간주하고 무시")
         void withdrawBySocialInfo_ignored_whenAlreadyWithdrawn() {
             // given
-            Member withdrawnMember = Member.create(SocialProvider.APPLE, "appleSub", "nickname", "test@example.com", true, "imageUrl");
+            Member withdrawnMember = Member.create("nickname", "test@example.com", "imageUrl");
             withdrawnMember.withdraw(LocalDateTime.now());
-            doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            MemberSocialAccount appleAccount =
+                    MemberSocialAccount.link(1L, SocialProvider.APPLE, "appleSub", "test@example.com", true, null);
+            doReturn(Optional.of(appleAccount)).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findById(1L);
 
             // when
             memberService.withdrawBySocialInfo("appleSub", SocialProvider.APPLE);
@@ -228,20 +238,45 @@ class MemberServiceTest {
     @DisplayName("이메일 공유 상태 변경")
     class UpdateEmailSharingStatus {
 
+        private final Member activeMember = Member.create("nickname", "test@example.com", "imageUrl");
+
         @Test
         @DisplayName("성공 - 탈퇴한 회원이면 갱신하지 않고 무시")
         void updateEmailSharingStatus_ignored_whenWithdrawn() {
             // given
-            Member withdrawnMember = Member.create(SocialProvider.APPLE, "appleSub", "nickname", "test@example.com", true, "imageUrl");
+            Member withdrawnMember = Member.create("nickname", "test@example.com", "imageUrl");
             withdrawnMember.withdraw(LocalDateTime.now());
-            doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            MemberSocialAccount appleAccount =
+                    MemberSocialAccount.link(1L, SocialProvider.APPLE, "appleSub", "test@example.com", true, null);
+            doReturn(Optional.of(appleAccount)).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findById(1L);
 
             // when
             memberService.updateEmailSharingStatus("appleSub", SocialProvider.APPLE, false);
 
             // then
-            verify(saveMemberPort, never()).save(any(Member.class));
-            assertTrue(withdrawnMember.isEmailSharingEnabled()); // 기존 값 유지
+            verify(saveMemberSocialAccountPort, never()).save(any(MemberSocialAccount.class));
+            assertTrue(appleAccount.isEmailSharingEnabled()); // 기존 값 유지
+        }
+
+        @Test
+        @DisplayName("성공 - 이메일 공유 상태는 해당 소셜 계정에만 반영되고 다른 플랫폼은 영향받지 않는다")
+        void updateEmailSharingStatus_appliesOnlyToTargetSocialAccount() {
+            // given - 카카오/애플을 모두 연동한 회원이 애플에서만 이메일 공유를 중단한 상황
+            MemberSocialAccount kakaoAccount =
+                    MemberSocialAccount.link(1L, SocialProvider.KAKAO, "12345", "test@kakao.com", true, null);
+            MemberSocialAccount appleAccount =
+                    MemberSocialAccount.link(1L, SocialProvider.APPLE, "appleSub", "test@example.com", true, null);
+            doReturn(Optional.of(appleAccount)).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            doReturn(Optional.of(activeMember)).when(loadMemberPort).findById(1L);
+
+            // when
+            memberService.updateEmailSharingStatus("appleSub", SocialProvider.APPLE, false);
+
+            // then
+            verify(saveMemberSocialAccountPort).save(appleAccount);
+            assertFalse(appleAccount.isEmailSharingEnabled());
+            assertTrue(kakaoAccount.isEmailSharingEnabled()); // 카카오는 그대로 유지
         }
     }
 
@@ -250,7 +285,7 @@ class MemberServiceTest {
     class AgreeToTerms {
 
         private final Long memberId = 1L;
-        private final Member member = Member.create(SocialProvider.KAKAO, "socialId", "test@example.com", "password", true, "nickname");
+        private final Member member = Member.create("test@example.com", "password", "nickname");
 
         private final List<TermsVersion> allLatestVersions = List.of(
                 termsVersion(1L, TermsType.SERVICE, true),
@@ -393,7 +428,7 @@ class MemberServiceTest {
         @DisplayName("성공 - 닉네임만 수정 (이미지 URL 동일)")
         void updateMemberProfile_success_nicknameOnly() {
             // given
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "oldNickname", "test@example.com", true, currentImageUrl);
+            Member member = Member.create("oldNickname", "test@example.com", currentImageUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("newNickname", currentImageUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -416,7 +451,7 @@ class MemberServiceTest {
             String newTempUrl = "https://images.azitcrew.com/temp/profile/1/2026-04-22_uuid.jpg";
             String finalS3Key = "profile/1/2026-04-22_uuid.jpg";
 
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "oldNickname", "test@example.com", true, currentImageUrl);
+            Member member = Member.create("oldNickname", "test@example.com", currentImageUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("newNickname", newTempUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -442,7 +477,7 @@ class MemberServiceTest {
             // given
             String defaultUrl = "/default/profile/2.png";
 
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "oldNickname", "test@example.com", true, currentImageUrl);
+            Member member = Member.create("oldNickname", "test@example.com", currentImageUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("newNickname", defaultUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -469,7 +504,7 @@ class MemberServiceTest {
             String existingDefaultUrl = "/default/profile/1.png";
             String newDefaultUrl = "/default/profile/3.png";
 
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "nickname", "test@example.com", true, existingDefaultUrl);
+            Member member = Member.create("nickname", "test@example.com", existingDefaultUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("nickname", newDefaultUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -493,7 +528,7 @@ class MemberServiceTest {
         void updateMemberProfile_fail_imageNotUploaded() {
             // given
             String newTempUrl = "https://images.azitcrew.com/temp/profile/1/2026-04-22_uuid.jpg";
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "nickname", "test@example.com", true, currentImageUrl);
+            Member member = Member.create("nickname", "test@example.com", currentImageUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("newNickname", newTempUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -514,7 +549,7 @@ class MemberServiceTest {
         void updateMemberProfile_fail_imageOwnershipMismatch() {
             // given - memberId=1 이지만 이미지 경로의 entityId=99
             String otherMemberTempUrl = "https://images.azitcrew.com/temp/profile/99/2026-04-22_uuid.jpg";
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "nickname", "test@example.com", true, currentImageUrl);
+            Member member = Member.create("nickname", "test@example.com", currentImageUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("newNickname", otherMemberTempUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -535,7 +570,7 @@ class MemberServiceTest {
         void updateMemberProfile_fail_invalidImageUrl() {
             // given
             String invalidUrl = "not-a-valid-url";
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "nickname", "test@example.com", true, currentImageUrl);
+            Member member = Member.create("nickname", "test@example.com", currentImageUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("newNickname", invalidUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -556,7 +591,7 @@ class MemberServiceTest {
         void updateMemberProfile_success_externalUrlUnchanged() {
             // given - 카카오 프로필 이미지(외부 URL)를 그대로 유지
             String externalUrl = "https://k.kakao.com/profile/abc123.jpg";
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "oldNickname", "test@example.com", true, externalUrl);
+            Member member = Member.create("oldNickname", "test@example.com", externalUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("newNickname", externalUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -580,7 +615,7 @@ class MemberServiceTest {
             String newTempUrl = "https://images.azitcrew.com/temp/profile/1/2026-04-22_uuid.jpg";
             String finalS3Key = "profile/1/2026-04-22_uuid.jpg";
 
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "nickname", "test@example.com", true, externalUrl);
+            Member member = Member.create("nickname", "test@example.com", externalUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("nickname", newTempUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
@@ -606,7 +641,7 @@ class MemberServiceTest {
             String externalUrl = "https://k.kakao.com/profile/abc123.jpg";
             String newDefaultUrl = "/default/profile/2.png";
 
-            Member member = Member.create(SocialProvider.KAKAO, "socialId", "nickname", "test@example.com", true, externalUrl);
+            Member member = Member.create("nickname", "test@example.com", externalUrl);
             UpdateMemberProfileCommand command = UpdateMemberProfileCommand.of("nickname", newDefaultUrl);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);

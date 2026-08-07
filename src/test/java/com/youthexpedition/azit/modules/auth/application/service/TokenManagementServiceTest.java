@@ -10,7 +10,6 @@ import com.youthexpedition.azit.modules.member.domain.model.Member;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberRole;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberStatus;
-import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import com.youthexpedition.azit.modules.member.domain.model.enums.TermsType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -45,8 +44,6 @@ class TokenManagementServiceTest {
 
     private final Member activeMember = Member.builder()
             .id(1L)
-            .socialProvider(SocialProvider.KAKAO)
-            .socialProviderId("socialId")
             .nickname("testUser")
             .status(MemberStatus.ACTIVE)
             .role(MemberRole.MEMBER)

@@ -8,7 +8,6 @@ import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPo
 import com.youthexpedition.azit.modules.crew.application.port.out.query.MemberProfileDto;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberStatus;
-import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -27,12 +26,6 @@ public class MemberPersistenceAdapter implements LoadMemberPort, SaveMemberPort 
     public Optional<Member> findById(Long id) {
         return memberRepository.findById(id)
                 .map(memberMapper::toDomain); // Entity -> Domain 변환
-    }
-
-    @Override
-    public Optional<Member> findBySocialInfo(SocialProvider socialProvider, String socialProviderId) {
-        return memberRepository.findBySocialProviderAndSocialProviderId(socialProvider, socialProviderId)
-                .map(memberMapper::toDomain);
     }
 
     @Override

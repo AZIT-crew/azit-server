@@ -3,7 +3,6 @@ package com.youthexpedition.azit.modules.member.adapter.out.persistence.entity;
 import com.youthexpedition.azit.infrastructure.common.entity.BaseTimeEntity;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberRole;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberStatus;
-import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -21,28 +20,14 @@ public class MemberEntity extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "social_provider", nullable = false, length = 20)
-    private SocialProvider socialProvider;
-
-    @Column(name = "social_provider_id", length = 255)
-    private String socialProviderId;
-
     @Column(name = "nickname", nullable = false, length = 20)
     private String nickname;
 
     @Column(name = "email", length = 255)
-    private String email;
-
-    @Builder.Default
-    @Column(name = "is_email_sharing_enabled", nullable = false)
-    private boolean isEmailSharingEnabled = true;
+    private String email; // 대표 이메일
 
     @Column(name = "profile_image_url", length = 255)
     private String profileImageUrl;
-
-    @Column(name = "apple_refresh_token", length = 500)
-    private String appleRefreshToken;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)

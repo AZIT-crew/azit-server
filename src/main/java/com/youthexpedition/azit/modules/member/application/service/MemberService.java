@@ -19,11 +19,14 @@ import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedPro
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyInfoResponse;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberPort;
+import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadTermsVersionPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPort;
+import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberTermsConsentPort;
 import com.youthexpedition.azit.modules.member.application.service.mapper.MemberResponseMapper;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
+import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsent;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
@@ -47,6 +50,8 @@ import java.util.stream.Collectors;
 public class MemberService implements MemberUseCase {
     private final LoadMemberPort loadMemberPort;
     private final SaveMemberPort saveMemberPort;
+    private final LoadMemberSocialAccountPort loadMemberSocialAccountPort;
+    private final SaveMemberSocialAccountPort saveMemberSocialAccountPort;
     private final SaveCrewMemberPort saveCrewMemberPort;
     private final LoadCrewMemberPort loadCrewMemberPort;
     private final LoadCrewPort loadCrewPort;
@@ -135,8 +140,7 @@ public class MemberService implements MemberUseCase {
     @Override
     @Transactional
     public void withdrawBySocialInfo(String socialProviderId, SocialProvider socialProvider) {
-        Member member = loadMemberPort.findBySocialInfo(socialProvider, socialProviderId)
-                .orElseThrow(() -> new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND));
+        Member member = getMemberBySocialInfo(socialProvider, socialProviderId);
 
         // 이미 탈퇴한 회원이면 무시 (애플 웹훅 중복 수신 대비)
         if (member.isWithdrawn()) {
@@ -162,8 +166,8 @@ public class MemberService implements MemberUseCase {
     @Override
     @Transactional
     public void updateEmailSharingStatus(String socialProviderId, SocialProvider socialProvider, boolean isEnabled) {
-        Member member = loadMemberPort.findBySocialInfo(socialProvider, socialProviderId)
-                .orElseThrow(() -> new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND));
+        MemberSocialAccount socialAccount = getSocialAccount(socialProvider, socialProviderId);
+        Member member = getMember(socialAccount.getMemberId());
 
         // 탈퇴한 회원은 갱신하지 않음
         if (member.isWithdrawn()) {
@@ -171,8 +175,9 @@ public class MemberService implements MemberUseCase {
             return;
         }
 
-        member.updateEmailSharingStatus(isEnabled);
-        saveMemberPort.save(member);
+        // 이메일 공유 상태는 플랫폼마다 다르므로 해당 소셜 계정에만 반영
+        socialAccount.updateEmailSharingStatus(isEnabled);
+        saveMemberSocialAccountPort.save(socialAccount);
     }
 
     @Override
@@ -198,9 +203,9 @@ public class MemberService implements MemberUseCase {
 
     @Override
     public LinkedProviderResponse getLinkedProviders(Long memberId) {
-        Member member = getMember(memberId);
-        // 추후 계정 연동 기능 추가 시, 연동된 소셜 계정 목록을 함께 조회하여 반환
-        List<SocialProvider> providers = List.of(member.getSocialProvider());
+        List<SocialProvider> providers = loadMemberSocialAccountPort.findAllByMemberId(memberId).stream()
+                .map(MemberSocialAccount::getSocialProvider)
+                .toList();
         return LinkedProviderResponse.of(providers);
     }
 
@@ -220,6 +225,15 @@ public class MemberService implements MemberUseCase {
 
     private Member getMember(Long memberId) {
         return loadMemberPort.findById(memberId)
+                .orElseThrow(() -> new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND));
+    }
+
+    private Member getMemberBySocialInfo(SocialProvider socialProvider, String socialProviderId) {
+        return getMember(getSocialAccount(socialProvider, socialProviderId).getMemberId());
+    }
+
+    private MemberSocialAccount getSocialAccount(SocialProvider socialProvider, String socialProviderId) {
+        return loadMemberSocialAccountPort.findBySocialInfo(socialProvider, socialProviderId)
                 .orElseThrow(() -> new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND));
     }
 

@@ -4,7 +4,6 @@ import com.youthexpedition.azit.infrastructure.exception.BusinessException;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberRole;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberStatus;
-import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -16,13 +15,9 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class Member {
     private final Long id;
-    private final SocialProvider socialProvider;
-    private final String socialProviderId;
     private String nickname;
-    private String email;
-    private boolean isEmailSharingEnabled;
+    private String email; // 대표 이메일
     private String profileImageUrl;
-    private String appleRefreshToken; // 애플 리프레시 토큰
     private MemberStatus status;
     private MemberRole role;
     private Long totalPoints;
@@ -38,14 +33,10 @@ public class Member {
 
     private static final long WITHDRAWAL_GRACE_PERIOD_DAYS = 30L; // 탈퇴 유예기간 (이내 재로그인 시 복구 가능)
 
-    public static Member create(SocialProvider provider, String socialProviderId,
-                                String nickname, String email, boolean isEmailSharingEnabled, String profileImageUrl) {
+    public static Member create(String nickname, String email, String profileImageUrl) {
         return Member.builder()
-                .socialProvider(provider)
-                .socialProviderId(socialProviderId)
                 .nickname(nickname)
                 .email(email)
-                .isEmailSharingEnabled(isEmailSharingEnabled)
                 .profileImageUrl(profileImageUrl)
                 .status(MemberStatus.PENDING_TERMS)
                 .role(MemberRole.MEMBER)
@@ -68,17 +59,6 @@ public class Member {
         }
 
         this.status = MemberStatus.ACTIVE;
-    }
-
-    // 애플 리프레시 토큰 업데이트
-    public void updateAppleRefreshToken(String appleRefreshToken) {
-        if (this.socialProvider == SocialProvider.APPLE) {
-            this.appleRefreshToken = appleRefreshToken;
-        }
-    }
-
-    public void updateEmailSharingStatus(boolean isEnabled) {
-        this.isEmailSharingEnabled = isEnabled;
     }
 
     // 탈퇴(유예기간 중) 또는 파기 완료 상태인지 확인
