@@ -27,6 +27,7 @@ import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberTe
 import com.youthexpedition.azit.modules.member.application.service.mapper.MemberResponseMapper;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
 import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
+import com.youthexpedition.azit.modules.member.domain.model.SocialAccounts;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsent;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
@@ -227,10 +228,8 @@ public class MemberService implements MemberUseCase {
 
     @Override
     public LinkedProviderResponse getLinkedProviders(Long memberId) {
-        List<SocialProvider> providers = loadMemberSocialAccountPort.findAllByMemberId(memberId).stream()
-                .map(MemberSocialAccount::getSocialProvider)
-                .toList();
-        return LinkedProviderResponse.of(providers);
+        SocialAccounts socialAccounts = SocialAccounts.of(loadMemberSocialAccountPort.findAllByMemberId(memberId));
+        return memberResponseMapper.toLinkedProviderResponse(socialAccounts);
     }
 
     @Override

@@ -48,14 +48,17 @@ public interface MemberControllerDocs {
     @Operation(
             summary = "회원 탈퇴",
             description = """
-            서비스 이용을 중단하고 회원의 소셜 연동 해제 및 탈퇴 처리를 진행합니다. <br><br>
-            
+            서비스 이용을 중단하고 탈퇴 처리를 진행합니다. <br><br>
+
             **[참고 사항]** <br>
-            * 리더로 소속된 크루가 있을 경우 서비스 탈퇴가 불가합니다. 리더 권한 위임 또는 크루 해산이 필요합니다. (CANNOT_SERVICE_WITHDRAW_AS_LEADER)
+            * 리더로 소속된 크루가 있을 경우 서비스 탈퇴가 불가합니다. 리더 권한 위임 또는 크루 해산이 필요합니다. (CANNOT_SERVICE_WITHDRAW_AS_LEADER) <br>
+            * 탈퇴 시점에는 상태만 변경되며, 소셜 연동 해제와 개인정보 파기는 유예기간(30일) 만료 후 배치에서 수행됩니다. <br>
+            * 유예기간 내에 동일 소셜 계정으로 재로그인하면 계정이 복구됩니다. 유예기간이 지나면 복구할 수 없습니다. (WITHDRAWAL_GRACE_PERIOD_EXPIRED) <br>
+            * 소셜 연동 해제(§로그인 정보)와는 다른 기능입니다. 연동 해제는 계정을 유지한 채 특정 플랫폼만 끊습니다.
             """
     )
     @ApiErrorCodeExamples({
-            "MEMBER_ALREADY_WITHDRAWN", "APPLE_REVOKE_FAILED",  "KAKAO_REVOKE_FAILED", "CANNOT_SERVICE_WITHDRAW_AS_LEADER",
+            "MEMBER_NOT_FOUND", "MEMBER_ALREADY_WITHDRAWN", "CANNOT_SERVICE_WITHDRAW_AS_LEADER",
             "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
     })
     CommonResponse<Void> withdraw(@Parameter(hidden = true) @CurrentMemberId Long memberId, @Parameter(hidden = true) @CurrentAccessToken String accessToken);
@@ -239,21 +242,22 @@ public interface MemberControllerDocs {
     CommonResponse<Void> updateMemberProfile(@Parameter(hidden = true) @CurrentMemberId Long memberId, @Valid @RequestBody UpdateMemberProfileRequest request);
 
     @Operation(
-            summary = "연동된 소셜 로그인 조회",
+            summary = "소셜 로그인 연동 상태 조회",
             description = """
-                    로그인한 사용자가 연동한 소셜 로그인 목록을 반환합니다. <br><br>
+                    로그인 정보 화면에 필요한 소셜 플랫폼별 연동 상태를 반환합니다. <br><br>
 
                     **[응답값]** <br>
-                    * KAKAO: 카카오 연동 <br>
-                    * APPLE: 애플 연동 <br><br>
+                    * 지원하는 모든 플랫폼(KAKAO, APPLE)이 **연동 여부와 관계없이 항상 포함**됩니다. (미연동 플랫폼은 isLinked=false) <br>
+                    * maskedEmail: 해당 소셜 계정에서 받은 이메일을 마스킹한 값 (예: az**@kakao.com). 이메일 미제공 시 null <br>
+                    * linkedAt: 연동 일자 (미연동 시 null) <br>
+                    * isUnlinkable: 연동 해제 가능 여부 <br><br>
 
                     **[참고 사항]** <br>
-                    * 현재는 계정당 하나의 소셜 로그인만 지원합니다. <br>
-                    * 추후 계정 연동 기능 도입 시 복수의 소셜 로그인이 반환될 수 있습니다.
+                    * 연동된 소셜이 1개뿐이면 해제 시 계정에 접근할 수 없게 되므로 isUnlinkable=false로 내려갑니다.
+                      클라이언트는 이 값으로 '연동 해제' 버튼을 비활성화해야 합니다.
                     """
     )
     @ApiErrorCodeExamples({
-            "MEMBER_NOT_FOUND",
             "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
     })
     CommonResponse<LinkedProviderResponse> getLinkedProviders(@Parameter(hidden = true) @CurrentMemberId Long memberId);
