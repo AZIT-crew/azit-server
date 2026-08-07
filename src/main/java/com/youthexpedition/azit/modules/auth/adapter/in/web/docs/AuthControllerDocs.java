@@ -5,6 +5,7 @@ import com.youthexpedition.azit.infrastructure.common.annotation.CurrentMemberId
 import com.youthexpedition.azit.infrastructure.common.response.CommonResponse;
 import com.youthexpedition.azit.infrastructure.config.swagger.ApiErrorCodeExamples;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.AppleNotificationRequest;
+import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.LinkSocialAccountRequest;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.SocialLoginRequest;
 import com.youthexpedition.azit.modules.auth.application.port.in.dto.SocialLoginResponse;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
@@ -85,8 +86,8 @@ public interface AuthControllerDocs {
             Apple 서버가 사용자 상태 변경 알림(계정 연동 해제 등)을 보낼 때 이를 수신하여 서버 데이터를 동기화합니다. <br><br>
             
             **[수신 케이스]** <br>
-            * CONSENT_REVOKED: 사용자가 Apple 설정에서 앱 연동을 해제한 경우 탈퇴 처리를 진행합니다. <br>
-            * ACCOUNT_DELETE: Apple 계정이 삭제된 경우 탈퇴 처리를 진행합니다.
+            * CONSENT_REVOKED: 사용자가 Apple 설정에서 앱 연동을 해제한 경우 애플 연동만 해제합니다. 마지막 남은 연동이었다면 탈퇴 처리합니다. <br>
+            * ACCOUNT_DELETE: Apple 계정이 삭제된 경우 CONSENT_REVOKED와 동일하게 처리합니다. (다른 소셜이 연동되어 있으면 계정은 유지)
             * EMAIL_ENABLED: 사용자가 Apple 설정에서 이메일 공유를 활성화한 경우(숨기기 해제) 해당 플래그를 Y로 설정합니다.
             * EMAIL_DISABLED: 사용자가 Apple 설정에서 이메일 공유를 비활성화한 경우(숨기기 설정) 해당 플래그를 N으로 설정합니다.
             """
@@ -95,4 +96,44 @@ public interface AuthControllerDocs {
             "INVALID_APPLE_ID_TOKEN", "APPLE_PUBLIC_KEY_NOT_FOUND"
     })
     CommonResponse<Void> receiveAppleNotification(@Valid @RequestBody AppleNotificationRequest request);
+
+    @Operation(
+            summary = "소셜 계정 연동",
+            description = """
+            로그인 중인 계정에 다른 소셜 플랫폼 계정을 추가로 연동합니다. <br><br>
+
+            **[요청 값]** <br>
+            * 카카오(웹 OAuth): authorizationCode <br>
+            * 카카오(네이티브 SDK): accessToken <br>
+            * 애플: authorizationCode + idToken <br><br>
+
+            **[참고 사항]** <br>
+            * 해당 소셜 계정이 이미 다른 회원에게 연동되어 있으면 연동이 차단됩니다. (SOCIAL_ACCOUNT_ALREADY_LINKED) <br>
+            * 이미 같은 플랫폼을 연동한 경우 추가로 연동할 수 없습니다. (ALREADY_LINKED_PROVIDER)
+            """
+    )
+    @ApiErrorCodeExamples({
+            "SOCIAL_ACCOUNT_ALREADY_LINKED", "ALREADY_LINKED_PROVIDER", "MISSING_SOCIAL_CREDENTIAL",
+            "INVALID_SOCIAL_CODE", "INVALID_SOCIAL_PROVIDER", "SOCIAL_AUTHENTICATION_FAILED", "INVALID_APPLE_ID_TOKEN"
+    })
+    CommonResponse<Void> linkSocialAccount(
+            @Parameter(hidden = true) @CurrentMemberId Long memberId, @PathVariable SocialProvider provider,
+            @Valid @RequestBody LinkSocialAccountRequest request);
+
+    @Operation(
+            summary = "소셜 계정 연동 해제",
+            description = """
+            연동된 소셜 계정을 해제합니다. 해제 후 해당 플랫폼으로는 로그인할 수 없습니다. <br><br>
+
+            **[참고 사항]** <br>
+            * 계정 탈퇴가 아니므로 프로필·활동 데이터는 삭제되지 않고 계정에 그대로 유지됩니다. <br>
+            * 해제 후에도 동일 플랫폼으로 재연동할 수 있습니다. <br>
+            * 연동된 소셜 계정이 1개뿐이면 계정에 접근할 수 없게 되므로 해제할 수 없습니다. (CANNOT_UNLINK_LAST_PROVIDER)
+            """
+    )
+    @ApiErrorCodeExamples({
+            "CANNOT_UNLINK_LAST_PROVIDER", "PROVIDER_NOT_LINKED", "KAKAO_REVOKE_FAILED", "APPLE_REVOKE_FAILED"
+    })
+    CommonResponse<Void> unlinkSocialAccount(
+            @Parameter(hidden = true) @CurrentMemberId Long memberId, @PathVariable SocialProvider provider);
 }

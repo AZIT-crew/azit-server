@@ -50,10 +50,7 @@ public class SocialLoginService implements SocialLoginUseCase {
 
     @Override
     public AuthResult login(SocialLoginCommand command) {
-        if ((command.authorizationCode() == null || command.authorizationCode().isBlank()) &&
-                (command.accessToken() == null || command.accessToken().isBlank())) {
-            throw new BusinessException(AuthErrorCode.MISSING_SOCIAL_CREDENTIAL);
-        }
+        command.validateCredential();
 
         SocialProfile profile = socialAuthPort.getSocialProfile(command);
 
