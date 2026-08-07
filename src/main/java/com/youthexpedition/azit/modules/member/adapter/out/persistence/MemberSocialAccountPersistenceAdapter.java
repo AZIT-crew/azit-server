@@ -40,6 +40,11 @@ public class MemberSocialAccountPersistenceAdapter implements LoadMemberSocialAc
     }
 
     @Override
+    public void deleteById(Long id) {
+        memberSocialAccountRepository.deleteById(id);
+    }
+
+    @Override
     public void deleteByMemberId(Long memberId) {
         memberSocialAccountRepository.deleteByMemberId(memberId);
     }

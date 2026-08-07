@@ -27,6 +27,8 @@ import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
+import com.youthexpedition.azit.modules.member.domain.model.enums.MemberRole;
+import com.youthexpedition.azit.modules.member.domain.model.enums.MemberStatus;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import com.youthexpedition.azit.modules.member.domain.model.enums.TermsType;
 import org.junit.jupiter.api.DisplayName;
@@ -90,7 +92,17 @@ class MemberServiceTest {
 
         private final Long memberId = 1L;
         private final String accessToken = "testAccessToken";
-        private final Member member = Member.create("test@example.com", "password", "nickname");
+
+        // 조회된 회원은 항상 id를 가지므로 빌더로 구성한다 (Member.create()는 가입 직전 상태라 id가 없음)
+        private final Member member = Member.builder()
+                .id(memberId)
+                .nickname("nickname")
+                .email("test@example.com")
+                .status(MemberStatus.ACTIVE)
+                .role(MemberRole.MEMBER)
+                .totalPoints(0L)
+                .totalAttendanceCount(0)
+                .build();
 
         @Test
         @DisplayName("성공 - 탈퇴 시점이 기록되고 소셜 연동은 해제하지 않음")
@@ -210,27 +222,108 @@ class MemberServiceTest {
     }
 
     @Nested
-    @DisplayName("소셜 정보 기반 탈퇴 (애플 웹훅)")
-    class WithdrawBySocialInfo {
+    @DisplayName("소셜 연동 해제 알림 처리 (애플 웹훅)")
+    class HandleSocialAccountRevoked {
+
+        private static final Long MEMBER_ID = 1L;
+        private static final Long APPLE_ACCOUNT_ID = 100L;
+
+        private MemberSocialAccount socialAccount(Long id, SocialProvider provider, String providerId) {
+            return MemberSocialAccount.builder()
+                    .id(id)
+                    .memberId(MEMBER_ID)
+                    .socialProvider(provider)
+                    .socialProviderId(providerId)
+                    .linkedAt(LocalDateTime.now())
+                    .build();
+        }
+
+        private Member activeMember() {
+            return Member.builder()
+                    .id(MEMBER_ID)
+                    .nickname("nickname")
+                    .status(MemberStatus.ACTIVE)
+                    .role(MemberRole.MEMBER)
+                    .totalPoints(0L)
+                    .totalAttendanceCount(0)
+                    .build();
+        }
+
+        @Test
+        @DisplayName("성공 - 연동되어 있지 않은 계정이면 무시 (서비스에서 먼저 해제 후 수신한 웹훅)")
+        void handleSocialAccountRevoked_ignored_whenSocialAccountNotFound() {
+            // given
+            doReturn(Optional.empty()).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+
+            // when
+            memberService.handleSocialAccountRevoked("appleSub", SocialProvider.APPLE);
+
+            // then
+            verify(loadMemberPort, never()).findById(anyLong());
+            verify(saveMemberSocialAccountPort, never()).deleteById(anyLong());
+            verify(saveMemberPort, never()).save(any(Member.class));
+        }
 
         @Test
         @DisplayName("성공 - 이미 탈퇴한 회원이면 중복 웹훅으로 간주하고 무시")
-        void withdrawBySocialInfo_ignored_whenAlreadyWithdrawn() {
+        void handleSocialAccountRevoked_ignored_whenAlreadyWithdrawn() {
             // given
             Member withdrawnMember = Member.create("nickname", "test@example.com", "imageUrl");
             withdrawnMember.withdraw(LocalDateTime.now());
-            MemberSocialAccount appleAccount =
-                    MemberSocialAccount.link(1L, SocialProvider.APPLE, "appleSub", "test@example.com", true, null);
-            doReturn(Optional.of(appleAccount)).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
-            doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findById(1L);
+            doReturn(Optional.of(socialAccount(APPLE_ACCOUNT_ID, SocialProvider.APPLE, "appleSub")))
+                    .when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findById(MEMBER_ID);
 
             // when
-            memberService.withdrawBySocialInfo("appleSub", SocialProvider.APPLE);
+            memberService.handleSocialAccountRevoked("appleSub", SocialProvider.APPLE);
 
             // then
             verify(loadCrewMemberPort, never()).findAllActiveByMemberId(anyLong());
             verify(tokenPort, never()).deleteByMemberId(anyLong());
+            verify(saveMemberSocialAccountPort, never()).deleteById(anyLong());
             verify(saveMemberPort, never()).save(any(Member.class));
+        }
+
+        @Test
+        @DisplayName("성공 - 다른 연동이 남아 있으면 해당 소셜 계정만 해제하고 탈퇴하지 않음")
+        void handleSocialAccountRevoked_unlinksOnlyRevokedAccount_whenOtherProviderRemains() {
+            // given - 카카오/애플을 모두 연동한 회원이 애플에서만 연동을 해제한 상황
+            Member member = activeMember();
+            MemberSocialAccount appleAccount = socialAccount(APPLE_ACCOUNT_ID, SocialProvider.APPLE, "appleSub");
+            MemberSocialAccount kakaoAccount = socialAccount(200L, SocialProvider.KAKAO, "12345");
+            doReturn(Optional.of(appleAccount)).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(MEMBER_ID);
+            doReturn(List.of(appleAccount, kakaoAccount)).when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+
+            // when
+            memberService.handleSocialAccountRevoked("appleSub", SocialProvider.APPLE);
+
+            // then - 애플 연동만 사라지고 계정과 데이터는 유지되어야 함
+            verify(saveMemberSocialAccountPort).deleteById(APPLE_ACCOUNT_ID);
+            verify(saveMemberPort, never()).save(any(Member.class));
+            verify(tokenPort, never()).deleteByMemberId(anyLong());
+            assertEquals(MemberStatus.ACTIVE, member.getStatus());
+        }
+
+        @Test
+        @DisplayName("성공 - 마지막 연동이 해제되면 로그인 수단이 없으므로 탈퇴 처리")
+        void handleSocialAccountRevoked_withdrawsMember_whenLastAccountRevoked() {
+            // given
+            Member member = activeMember();
+            MemberSocialAccount appleAccount = socialAccount(APPLE_ACCOUNT_ID, SocialProvider.APPLE, "appleSub");
+            doReturn(Optional.of(appleAccount)).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(MEMBER_ID);
+            doReturn(List.of(appleAccount)).when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+            doReturn(List.of()).when(loadCrewMemberPort).findAllActiveByMemberId(MEMBER_ID);
+
+            // when
+            memberService.handleSocialAccountRevoked("appleSub", SocialProvider.APPLE);
+
+            // then - 소셜 계정 row는 파기 배치가 지우므로 여기서 삭제하지 않는다
+            verify(saveMemberSocialAccountPort, never()).deleteById(anyLong());
+            verify(tokenPort).deleteByMemberId(MEMBER_ID);
+            verify(saveMemberPort).save(member);
+            assertEquals(MemberStatus.WITHDRAWN, member.getStatus());
         }
     }
 
@@ -239,6 +332,20 @@ class MemberServiceTest {
     class UpdateEmailSharingStatus {
 
         private final Member activeMember = Member.create("nickname", "test@example.com", "imageUrl");
+
+        @Test
+        @DisplayName("성공 - 연동되어 있지 않은 계정이면 무시")
+        void updateEmailSharingStatus_ignored_whenSocialAccountNotFound() {
+            // given - 연동 해제 후 뒤늦게 도착한 웹훅
+            doReturn(Optional.empty()).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+
+            // when
+            memberService.updateEmailSharingStatus("appleSub", SocialProvider.APPLE, false);
+
+            // then
+            verify(loadMemberPort, never()).findById(anyLong());
+            verify(saveMemberSocialAccountPort, never()).save(any(MemberSocialAccount.class));
+        }
 
         @Test
         @DisplayName("성공 - 탈퇴한 회원이면 갱신하지 않고 무시")

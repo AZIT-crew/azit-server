@@ -12,7 +12,7 @@ import java.util.List;
 public interface MemberUseCase {
     void agreeToTerms(Long memberId, AgreeToTermsCommand command);
     void withdraw(Long memberId, String accessToken);
-    void withdrawBySocialInfo(String socialProviderId, SocialProvider socialProvider);
+    void handleSocialAccountRevoked(String socialProviderId, SocialProvider socialProvider);
     void updateEmailSharingStatus(String socialProviderId, SocialProvider socialProvider, boolean isEnabled);
     MyInfoResponse getMyInfo(Long memberId);
     List<MyCrewResponse> getMyCrews(Long memberId);

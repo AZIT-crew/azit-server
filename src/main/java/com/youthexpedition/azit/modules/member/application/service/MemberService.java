@@ -121,33 +121,48 @@ public class MemberService implements MemberUseCase {
         // 이미 탈퇴한 회원인지 확인
         member.validateNotWithdrawn();
 
-        List<CrewMember> activeCrewMembers = loadCrewMemberPort.findAllActiveByMemberId(memberId);
+        processWithdrawal(member);
 
-        // 탈퇴 가능한지 확인
-        validateWithdrawal(memberId, activeCrewMembers);
-
-        // 가입한 크루 인원 수 차감 및 상태 변경
-        processCrewWithdrawal(memberId, activeCrewMembers);
-
-        // 탈퇴 상태로 변경 (소셜 연동 해제 및 개인정보 파기는 유예기간 만료 후 배치에서 처리)
-        member.withdraw(LocalDateTime.now());
-
-        tokenPort.deleteByMemberId(memberId); // 리프레시 토큰 삭제
         tokenPort.addToBlacklist(accessToken, BLACKLIST_REASON_WITHDRAWN); // 블랙리스트에 액세스 토큰 추가
-        saveMemberPort.save(member);
     }
 
     @Override
     @Transactional
-    public void withdrawBySocialInfo(String socialProviderId, SocialProvider socialProvider) {
-        Member member = getMemberBySocialInfo(socialProvider, socialProviderId);
+    public void handleSocialAccountRevoked(String socialProviderId, SocialProvider socialProvider) {
+        MemberSocialAccount revokedAccount = loadMemberSocialAccountPort
+                .findBySocialInfo(socialProvider, socialProviderId)
+                .orElse(null);
 
-        // 이미 탈퇴한 회원이면 무시 (애플 웹훅 중복 수신 대비)
-        if (member.isWithdrawn()) {
-            log.info("[MEMBER] 이미 탈퇴한 회원(memberId: {})에 대한 탈퇴 요청을 무시합니다.", member.getId());
+        // 이미 연동이 해제된 계정이면 무시 (서비스에서 해제 후 수신한 웹훅 또는 중복 수신)
+        if (revokedAccount == null) {
+            log.info("[MEMBER] 연동되어 있지 않은 {} 계정의 연동 해제 알림을 무시합니다.", socialProvider);
             return;
         }
 
+        Member member = getMember(revokedAccount.getMemberId());
+
+        // 이미 탈퇴한 회원이면 무시 (웹훅 중복 수신 대비)
+        if (member.isWithdrawn()) {
+            log.info("[MEMBER] 이미 탈퇴한 회원(memberId: {})에 대한 연동 해제 알림을 무시합니다.", member.getId());
+            return;
+        }
+
+        int linkedCount = loadMemberSocialAccountPort.findAllByMemberId(member.getId()).size();
+
+        // 남은 연동이 있으면 해당 소셜 계정만 연동 해제 (프로필·활동 데이터는 그대로 유지)
+        if (linkedCount > 1) {
+            saveMemberSocialAccountPort.deleteById(revokedAccount.getId());
+            log.info("[MEMBER] memberId: {}의 {} 연동이 해제되었습니다. (남은 소셜 연동 개수 {}개)",
+                    member.getId(), socialProvider, linkedCount - 1);
+            return;
+        }
+
+        // 마지막 연동이 해제되면 로그인 수단이 사라지므로 탈퇴 처리
+        log.info("[MEMBER] memberId: {}의 마지막 연동({})이 해제되어 탈퇴 처리합니다.", member.getId(), socialProvider);
+        processWithdrawal(member);
+    }
+
+    private void processWithdrawal(Member member) {
         List<CrewMember> activeCrewMembers = loadCrewMemberPort.findAllActiveByMemberId(member.getId());
 
         // 탈퇴 가능한지 확인
@@ -156,7 +171,7 @@ public class MemberService implements MemberUseCase {
         // 가입한 크루 인원 수 차감 및 상태 변경
         processCrewWithdrawal(member.getId(), activeCrewMembers);
 
-        // 탈퇴 상태로 변경 (개인정보 파기는 유예기간 만료 후 배치에서 처리)
+        // 탈퇴 상태로 변경
         member.withdraw(LocalDateTime.now());
 
         tokenPort.deleteByMemberId(member.getId()); // 리프레시 토큰 삭제
@@ -166,7 +181,16 @@ public class MemberService implements MemberUseCase {
     @Override
     @Transactional
     public void updateEmailSharingStatus(String socialProviderId, SocialProvider socialProvider, boolean isEnabled) {
-        MemberSocialAccount socialAccount = getSocialAccount(socialProvider, socialProviderId);
+        MemberSocialAccount socialAccount = loadMemberSocialAccountPort
+                .findBySocialInfo(socialProvider, socialProviderId)
+                .orElse(null);
+
+        // 이미 연동이 해제된 계정이면 무시
+        if (socialAccount == null) {
+            log.info("[MEMBER] 연동되어 있지 않은 {} 계정의 이메일 공유 상태 변경 알림을 무시합니다.", socialProvider);
+            return;
+        }
+
         Member member = getMember(socialAccount.getMemberId());
 
         // 탈퇴한 회원은 갱신하지 않음
@@ -225,15 +249,6 @@ public class MemberService implements MemberUseCase {
 
     private Member getMember(Long memberId) {
         return loadMemberPort.findById(memberId)
-                .orElseThrow(() -> new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND));
-    }
-
-    private Member getMemberBySocialInfo(SocialProvider socialProvider, String socialProviderId) {
-        return getMember(getSocialAccount(socialProvider, socialProviderId).getMemberId());
-    }
-
-    private MemberSocialAccount getSocialAccount(SocialProvider socialProvider, String socialProviderId) {
-        return loadMemberSocialAccountPort.findBySocialInfo(socialProvider, socialProviderId)
                 .orElseThrow(() -> new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND));
     }
 
