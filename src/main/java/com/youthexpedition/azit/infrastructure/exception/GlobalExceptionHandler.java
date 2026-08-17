@@ -4,6 +4,7 @@ import com.youthexpedition.azit.infrastructure.common.response.CommonErrorRespon
 import com.youthexpedition.azit.infrastructure.common.response.code.CommonErrorCode;
 import com.youthexpedition.azit.infrastructure.common.response.code.BaseErrorCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -61,6 +62,11 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     protected ResponseEntity<CommonErrorResponse> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException e) {
+        // 커스텀 컨버터가 던진 BusinessException은 변환 실패로 감싸이므로 원래 에러 코드로 응답
+        if (NestedExceptionUtils.getMostSpecificCause(e) instanceof BusinessException businessException) {
+            return handleBusinessException(businessException);
+        }
+
         log.warn("MethodArgumentTypeMismatchException: {}", e.getMessage());
 
         return ResponseEntity

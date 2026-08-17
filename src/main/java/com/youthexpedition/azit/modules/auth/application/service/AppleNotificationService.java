@@ -34,8 +34,8 @@ public class AppleNotificationService implements AppleNotificationUseCase {
         switch (type) {
             case CONSENT_REVOKED:
             case ACCOUNT_DELETE:
-                // 사용자가 연동을 해제하거나 계정을 삭제한 경우 탈퇴 처리
-                memberUseCase.withdrawBySocialInfo(event.sub(), SocialProvider.APPLE);
+                // 애플 연동만 해제하고, 마지막 남은 연동이었다면 탈퇴 처리 (다른 소셜이 남아 있으면 계정은 유지)
+                memberUseCase.handleSocialAccountRevoked(event.sub(), SocialProvider.APPLE);
                 break;
 
             case EMAIL_ENABLED:

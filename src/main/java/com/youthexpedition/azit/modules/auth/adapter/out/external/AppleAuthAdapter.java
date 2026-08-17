@@ -3,6 +3,7 @@ package com.youthexpedition.azit.modules.auth.adapter.out.external;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.youthexpedition.azit.infrastructure.auth.util.AppleJwtUtils;
+import com.youthexpedition.azit.infrastructure.common.response.code.BaseErrorCode;
 import com.youthexpedition.azit.infrastructure.exception.BusinessException;
 import com.youthexpedition.azit.modules.auth.adapter.out.external.dto.ApplePublicKeyResponse;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.AppleUserInfoResponse;
@@ -15,6 +16,7 @@ import com.youthexpedition.azit.modules.auth.application.port.out.SocialAuthPort
 import com.youthexpedition.azit.modules.auth.domain.model.SocialProfile;
 import com.youthexpedition.azit.modules.auth.domain.model.enums.AuthErrorCode;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
+import feign.FeignException;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +41,7 @@ public class AppleAuthAdapter implements SocialAuthPort {
     private static final String TOKEN_TYPE_HINT = "refresh_token";
     private static final String APPLE_KEY_ALGORITHM = "RS256";
     private static final String APPLE_USER_NAME = "Apple User";
+    private static final String APPLE_ERROR_INVALID_GRANT = "invalid_grant";
 
     @Override
     public SocialProfile getSocialProfile(SocialLoginCommand command) {
@@ -105,10 +108,40 @@ public class AppleAuthAdapter implements SocialAuthPort {
         }
 
         String clientSecret = appleJwtUtils.createClientSecret();
-        AppleTokenResponse tokenResponse = appleFeignClient.getToken(
-                clientId, clientSecret, authorizationCode, GRANT_TYPE_AUTHORIZATION_CODE, redirectUrl);
+        try {
+            AppleTokenResponse tokenResponse = appleFeignClient.getToken(
+                    clientId, clientSecret, authorizationCode, GRANT_TYPE_AUTHORIZATION_CODE, redirectUrl);
 
-        return tokenResponse.refreshToken();
+            return tokenResponse.refreshToken();
+        } catch (FeignException.BadRequest e) {
+            throw new BusinessException(resolveTokenErrorCode(e.contentUTF8()));
+        } catch (FeignException e) {
+            // 기타 통신 오류
+            log.error("애플 토큰 요청 중 오류가 발생했습니다: {}", e.getMessage());
+            throw new BusinessException(AuthErrorCode.SOCIAL_AUTHENTICATION_FAILED);
+        }
+    }
+
+    /**
+     * 애플은 인가 코드 문제(invalid_grant)와 서버 설정 문제(invalid_client 등)를 모두 400으로 응답한다.
+     * 클라이언트가 재시도해서 해결할 수 있는 invalid_grant만 사용자 오류로 구분한다.
+     */
+    private BaseErrorCode resolveTokenErrorCode(String responseBody) {
+        try {
+            String error = objectMapper.readTree(responseBody).path("error").asText();
+
+            if (APPLE_ERROR_INVALID_GRANT.equals(error)) {
+                log.warn("애플 인가 코드가 만료되었거나 이미 사용되었습니다: {}", responseBody);
+                return AuthErrorCode.INVALID_SOCIAL_CODE;
+            }
+
+            // invalid_client(클라이언트 시크릿 문제), invalid_request(요청 형식 문제) 등은 서버 측 원인
+            log.error("애플 토큰 요청이 거부되었습니다: {}", responseBody);
+        } catch (JsonProcessingException e) {
+            log.error("애플 토큰 요청 오류 응답을 파싱하지 못했습니다: {}", responseBody);
+        }
+
+        return AuthErrorCode.SOCIAL_AUTHENTICATION_FAILED;
     }
 
     @Override

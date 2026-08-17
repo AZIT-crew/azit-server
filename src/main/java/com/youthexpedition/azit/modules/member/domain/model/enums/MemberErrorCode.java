@@ -17,7 +17,11 @@ public enum MemberErrorCode implements BaseErrorCode {
     INSUFFICIENT_POINTS("INSUFFICIENT_POINTS", "포인트가 부족합니다.", HttpStatus.BAD_REQUEST),
     INVALID_POINT_VALUE("INVALID_POINT_VALUE", "유효하지 않은 포인트 요청입니다.", HttpStatus.BAD_REQUEST),
     DEFAULT_IMAGE_NOT_FOUND("DEFAULT_IMAGE_NOT_FOUND", "기본 이미지를 찾을 수 없습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
-    JOINED_CREW_REQUIRED("JOINED_CREW_REQUIRED", "크루에 가입한 후 이용할 수 있는 서비스입니다.", HttpStatus.FORBIDDEN);
+    JOINED_CREW_REQUIRED("JOINED_CREW_REQUIRED", "크루에 가입한 후 이용할 수 있는 서비스입니다.", HttpStatus.FORBIDDEN),
+
+    // 소셜 연동 해제
+    PROVIDER_NOT_LINKED("PROVIDER_NOT_LINKED", "연동되지 않은 소셜 계정입니다.", HttpStatus.NOT_FOUND),
+    CANNOT_UNLINK_LAST_PROVIDER("CANNOT_UNLINK_LAST_PROVIDER", "최소 1개의 소셜 계정은 연동되어 있어야 합니다.", HttpStatus.BAD_REQUEST);
 
     private final String code;
     private final String message;

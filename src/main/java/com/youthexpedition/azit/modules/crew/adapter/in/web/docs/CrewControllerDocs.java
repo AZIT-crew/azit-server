@@ -91,7 +91,7 @@ public interface CrewControllerDocs {
             """
     )
     @ApiErrorCodeExamples({
-            "CREW_NOT_FOUND", "NOT_JOINED_CREW",
+            "CREW_NOT_FOUND", "JOIN_REQUEST_NOT_FOUND",
             "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"})
     CommonResponse<CrewJoinStatusResponse> getCrewJoinStatus(@PathVariable Long crewId, @Parameter(hidden = true) @CurrentMemberId Long memberId);
 

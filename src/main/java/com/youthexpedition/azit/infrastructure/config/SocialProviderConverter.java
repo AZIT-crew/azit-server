@@ -1,5 +1,7 @@
 package com.youthexpedition.azit.infrastructure.config;
 
+import com.youthexpedition.azit.infrastructure.exception.BusinessException;
+import com.youthexpedition.azit.modules.auth.domain.model.enums.AuthErrorCode;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.stereotype.Component;
@@ -8,7 +10,12 @@ import org.springframework.stereotype.Component;
 public class SocialProviderConverter implements Converter<String, SocialProvider> {
     @Override
     public SocialProvider convert(String source) {
-        // 소문자로 들어온 "kakao" 등을 대문자로 변환하여 Enum 매핑
-        return SocialProvider.valueOf(source.toUpperCase());
+        try {
+            // 소문자로 들어온 "kakao" 등을 대문자로 변환하여 Enum 매핑
+            return SocialProvider.valueOf(source.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            // 지원하지 않는 플랫폼 (예: "naver")
+            throw new BusinessException(AuthErrorCode.INVALID_SOCIAL_PROVIDER);
+        }
     }
 }

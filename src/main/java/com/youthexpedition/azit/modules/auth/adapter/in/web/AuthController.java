@@ -7,9 +7,11 @@ import com.youthexpedition.azit.infrastructure.common.response.CommonResponse;
 import com.youthexpedition.azit.infrastructure.common.response.code.CommonSuccessCode;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.docs.AuthControllerDocs;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.AppleNotificationRequest;
+import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.LinkSocialAccountRequest;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.SocialLoginRequest;
 import com.youthexpedition.azit.modules.auth.application.port.in.dto.SocialLoginResponse;
 import com.youthexpedition.azit.modules.auth.application.port.in.AppleNotificationUseCase;
+import com.youthexpedition.azit.modules.auth.application.port.in.SocialAccountUseCase;
 import com.youthexpedition.azit.modules.auth.application.port.in.SocialLoginUseCase;
 import com.youthexpedition.azit.modules.auth.application.port.in.TokenUseCase;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialLoginCommand;
@@ -31,6 +33,7 @@ public class AuthController implements AuthControllerDocs {
 
     private final SocialLoginUseCase socialLoginUseCase;
     private final AppleNotificationUseCase appleNotificationUseCase;
+    private final SocialAccountUseCase socialAccountUseCase;
     private final TokenUseCase tokenUseCase;
     private final CookieUtil cookieUtil;
 
@@ -82,6 +85,21 @@ public class AuthController implements AuthControllerDocs {
     @PostMapping("/apple/notification")
     public CommonResponse<Void> receiveAppleNotification(@Valid @RequestBody AppleNotificationRequest request) {
         appleNotificationUseCase.handleNotification(request.payload());
+
+        return CommonResponse.of(CommonSuccessCode.SUCCESS);
+    }
+
+    @PostMapping("/social-accounts/{provider}")
+    public CommonResponse<Void> linkSocialAccount(@CurrentMemberId Long memberId, @PathVariable SocialProvider provider,
+                                                  @Valid @RequestBody LinkSocialAccountRequest request) {
+        socialAccountUseCase.link(memberId, request.toCommand(provider));
+
+        return CommonResponse.of(CommonSuccessCode.SUCCESS);
+    }
+
+    @DeleteMapping("/social-accounts/{provider}")
+    public CommonResponse<Void> unlinkSocialAccount(@CurrentMemberId Long memberId, @PathVariable SocialProvider provider) {
+        socialAccountUseCase.unlink(memberId, provider);
 
         return CommonResponse.of(CommonSuccessCode.SUCCESS);
     }

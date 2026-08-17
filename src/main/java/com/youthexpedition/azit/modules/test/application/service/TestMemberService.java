@@ -5,17 +5,11 @@ import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialR
 import com.youthexpedition.azit.modules.auth.application.port.out.SocialAuthPort;
 import com.youthexpedition.azit.modules.auth.application.port.out.TokenPort;
 import com.youthexpedition.azit.modules.crew.application.port.out.*;
-import com.youthexpedition.azit.modules.crew.domain.model.Crew;
 import com.youthexpedition.azit.modules.crew.domain.model.CrewMember;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewErrorCode;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberRole;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberStatus;
-import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberPort;
-import com.youthexpedition.azit.modules.member.application.port.out.SaveDeliveryAddressPort;
-import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPort;
-import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberTermsConsentPort;
-import com.youthexpedition.azit.modules.member.application.port.out.SavePointHistoryPort;
-import com.youthexpedition.azit.modules.member.domain.model.Member;
+import com.youthexpedition.azit.modules.member.application.port.out.*;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
 import com.youthexpedition.azit.modules.store.application.port.out.SaveCartItemPort;
 import com.youthexpedition.azit.modules.test.application.port.in.TestMemberUseCase;
@@ -35,6 +29,8 @@ public class TestMemberService implements TestMemberUseCase {
     private static final String BLACKLIST_REASON_TEST_WITHDRAWN = "test-force-withdrawn";
 
     private final LoadMemberPort loadMemberPort;
+    private final LoadMemberSocialAccountPort loadMemberSocialAccountPort;
+    private final SaveMemberSocialAccountPort saveMemberSocialAccountPort;
     private final SocialAuthPort socialAuthPort;
     private final LoadCrewMemberPort loadCrewMemberPort;
     private final LoadCrewPort loadCrewPort;
@@ -52,7 +48,7 @@ public class TestMemberService implements TestMemberUseCase {
     @Transactional
     public void forceWithdraw(Long memberId, String accessToken) {
         log.warn("[TEST] memberId: {} 강제 탈퇴 처리를 시작합니다.", memberId);
-        Member member = getMember(memberId);
+        validateMemberExists(memberId);
 
         // 탈퇴 가능한지 확인
         validateWithdrawal(memberId);
@@ -81,8 +77,12 @@ public class TestMemberService implements TestMemberUseCase {
         // member_terms_consent 완전 삭제
         saveMemberTermsConsentPort.deleteByMemberId(memberId);
 
-        // 소셜 연동 해제
-        socialAuthPort.revoke(SocialRevokeCommand.from(member));
+        // 연동된 모든 소셜 계정 연동 해제
+        loadMemberSocialAccountPort.findAllByMemberId(memberId)
+                .forEach(socialAccount -> socialAuthPort.revoke(SocialRevokeCommand.from(socialAccount)));
+
+        // member_social_account 완전 삭제
+        saveMemberSocialAccountPort.deleteByMemberId(memberId);
 
         // member 완전 삭제
         saveMemberPort.deleteById(memberId);
@@ -109,9 +109,10 @@ public class TestMemberService implements TestMemberUseCase {
         }
     }
 
-    private Member getMember(Long memberId) {
-        return loadMemberPort.findById(memberId)
-                .orElseThrow(() -> new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND));
+    private void validateMemberExists(Long memberId) {
+        if (loadMemberPort.findById(memberId).isEmpty()) {
+            throw new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND);
+        }
     }
 
     // 본인이 리더인 크루가 있으면 앱 탈퇴 불가

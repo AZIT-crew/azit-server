@@ -13,10 +13,14 @@ import com.youthexpedition.azit.modules.auth.domain.model.SocialProfile;
 import com.youthexpedition.azit.modules.crew.application.port.out.LoadCrewMemberPort;
 import com.youthexpedition.azit.modules.crew.domain.model.CrewMember;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberPort;
+import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadTermsVersionPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPort;
+import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
+import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
+import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberStatus;
 import com.youthexpedition.azit.modules.member.domain.model.provider.ProfileImageProvider;
 
@@ -36,6 +40,8 @@ public class SocialLoginService implements SocialLoginUseCase {
     private final SocialAuthPort socialAuthPort;
     private final LoadMemberPort loadMemberPort;
     private final SaveMemberPort saveMemberPort;
+    private final LoadMemberSocialAccountPort loadMemberSocialAccountPort;
+    private final SaveMemberSocialAccountPort saveMemberSocialAccountPort;
     private final TokenPort tokenPort;
     private final LoadCrewMemberPort loadCrewMemberPort;
     private final LoadTermsVersionPort loadTermsVersionPort;
@@ -44,16 +50,12 @@ public class SocialLoginService implements SocialLoginUseCase {
 
     @Override
     public AuthResult login(SocialLoginCommand command) {
-        if ((command.authorizationCode() == null || command.authorizationCode().isBlank()) &&
-                (command.accessToken() == null || command.accessToken().isBlank())) {
-            throw new BusinessException(AuthErrorCode.MISSING_SOCIAL_CREDENTIAL);
-        }
+        command.validateCredential();
 
         SocialProfile profile = socialAuthPort.getSocialProfile(command);
 
         // 기존 회원 확인 및 신규 회원 가입
-        Member member = upsertMember(profile);
-        Member savedMember = saveMemberPort.save(member);
+        Member savedMember = upsertMember(profile);
 
         Long crewId = null;
         boolean needsTermsUpdate = false;
@@ -83,24 +85,20 @@ public class SocialLoginService implements SocialLoginUseCase {
                 .build();
     }
 
+    /**
+     * 소셜 계정 매핑을 기준으로 기존 회원을 찾고, 없으면 신규 가입
+     * 이메일이 같더라도 자동으로 기존 계정에 병합하지 않음
+     */
     private Member upsertMember(SocialProfile profile) {
-        Member member = loadMemberPort.findBySocialInfo(profile.socialProvider(), profile.socialProviderId())
-                .orElseGet(() -> {
-                    // 제공받은 프로필 이미지가 없을 경우 랜덤으로 기본 이미지 설정
-                    String profileImageUrl = profile.profileImageUrl();
-                    if (profileImageUrl == null || profileImageUrl.isBlank()) {
-                        profileImageUrl = profileImageProvider.getRandomDefaultImage();
-                    }
+        return loadMemberSocialAccountPort.findBySocialInfo(profile.socialProvider(), profile.socialProviderId())
+                .map(socialAccount -> loginExistingMember(socialAccount, profile))
+                .orElseGet(() -> registerMember(profile));
+    }
 
-                    return Member.create(
-                            profile.socialProvider(),
-                            profile.socialProviderId(),
-                            profile.nickname(),
-                            profile.email(),
-                            profile.isEmailSharingEnabled(),
-                            profileImageUrl
-                    );
-                });
+    // 기존 계정으로 로그인
+    private Member loginExistingMember(MemberSocialAccount socialAccount, SocialProfile profile) {
+        Member member = loadMemberPort.findById(socialAccount.getMemberId())
+                .orElseThrow(() -> new BusinessException(MemberErrorCode.MEMBER_NOT_FOUND));
 
         // 탈퇴한 회원인 경우 재활성화 (유예기간 만료 또는 파기 완료 시 예외 발생)
         if (member.isWithdrawn()) {
@@ -110,10 +108,33 @@ public class SocialLoginService implements SocialLoginUseCase {
 
         // 애플 리프레시 토큰이 존재하는 경우 최신값으로 업데이트
         if (profile.refreshToken() != null) {
-            member.updateAppleRefreshToken(profile.refreshToken());
+            socialAccount.updateAppleRefreshToken(profile.refreshToken());
+            saveMemberSocialAccountPort.save(socialAccount);
         }
 
-        return member;
+        return saveMemberPort.save(member);
+    }
+
+    // 신규 계정 등록
+    private Member registerMember(SocialProfile profile) {
+        // 제공받은 프로필 이미지가 없을 경우 랜덤으로 기본 이미지 설정
+        String profileImageUrl = profile.profileImageUrl();
+        if (profileImageUrl == null || profileImageUrl.isBlank()) {
+            profileImageUrl = profileImageProvider.getRandomDefaultImage();
+        }
+
+        Member savedMember = saveMemberPort.save(Member.create(profile.nickname(), profile.email(), profileImageUrl));
+
+        saveMemberSocialAccountPort.save(MemberSocialAccount.link(
+                savedMember.getId(),
+                profile.socialProvider(),
+                profile.socialProviderId(),
+                profile.email(),
+                profile.isEmailSharingEnabled(),
+                profile.refreshToken()
+        ));
+
+        return savedMember;
     }
 
     private boolean hasRequiredTermsUpdate(Long memberId) {
