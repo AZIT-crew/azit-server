@@ -1,10 +1,8 @@
 package com.youthexpedition.azit.modules.member.application.service.mapper;
 
-import com.youthexpedition.azit.infrastructure.common.util.StringFormatUtil;
 import com.youthexpedition.azit.infrastructure.common.util.image.ImageUrlFormatUtil;
 import com.youthexpedition.azit.modules.crew.domain.model.Crew;
 import com.youthexpedition.azit.modules.crew.domain.model.CrewMember;
-import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberRole;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberStatus;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse.LinkedProviderItem;
@@ -38,15 +36,12 @@ public class MemberResponseMapper {
         );
     }
 
-    /**
-     * 화면이 미연동 플랫폼도 함께 그려야 하므로, 연동 여부와 무관하게 지원 플랫폼 전체를 반환한다.
-     */
     public LinkedProviderResponse toLinkedProviderResponse(SocialAccounts socialAccounts) {
         Map<SocialProvider, MemberSocialAccount> accountsByProvider = socialAccounts.getAccounts().stream()
                 .collect(Collectors.toMap(
                         MemberSocialAccount::getSocialProvider,
                         account -> account,
-                        (existing, duplicate) -> existing // 플랫폼당 1개 (uk_member_provider)
+                        (existing, duplicate) -> existing // 플랫폼당 1개
                 ));
 
         List<LinkedProviderItem> providers = Arrays.stream(SocialProvider.values())
@@ -66,7 +61,7 @@ public class MemberResponseMapper {
         LocalDate linkedAt = socialAccount.getLinkedAt() == null ? null : socialAccount.getLinkedAt().toLocalDate();
         return LinkedProviderItem.linked(
                 provider,
-                StringFormatUtil.maskEmail(socialAccount.getEmail()),
+                socialAccount.getEmail(),
                 linkedAt,
                 isUnlinkable
         );

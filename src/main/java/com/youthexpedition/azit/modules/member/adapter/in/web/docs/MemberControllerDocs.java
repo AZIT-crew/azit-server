@@ -53,8 +53,7 @@ public interface MemberControllerDocs {
             **[참고 사항]** <br>
             * 리더로 소속된 크루가 있을 경우 서비스 탈퇴가 불가합니다. 리더 권한 위임 또는 크루 해산이 필요합니다. (CANNOT_SERVICE_WITHDRAW_AS_LEADER) <br>
             * 탈퇴 시점에는 상태만 변경되며, 소셜 연동 해제와 개인정보 파기는 유예기간(30일) 만료 후 배치에서 수행됩니다. <br>
-            * 유예기간 내에 동일 소셜 계정으로 재로그인하면 계정이 복구됩니다. 유예기간이 지나면 복구할 수 없습니다. (WITHDRAWAL_GRACE_PERIOD_EXPIRED) <br>
-            * 소셜 연동 해제(§로그인 정보)와는 다른 기능입니다. 연동 해제는 계정을 유지한 채 특정 플랫폼만 끊습니다.
+            * 유예기간 내에 동일 소셜 계정으로 재로그인하면 계정이 복구됩니다. 유예기간이 지나면 복구할 수 없습니다. (WITHDRAWAL_GRACE_PERIOD_EXPIRED)
             """
     )
     @ApiErrorCodeExamples({
@@ -245,12 +244,6 @@ public interface MemberControllerDocs {
             summary = "소셜 로그인 연동 상태 조회",
             description = """
                     로그인 정보 화면에 필요한 소셜 플랫폼별 연동 상태를 반환합니다. <br><br>
-
-                    **[응답값]** <br>
-                    * 지원하는 모든 플랫폼(KAKAO, APPLE)이 **연동 여부와 관계없이 항상 포함**됩니다. (미연동 플랫폼은 isLinked=false) <br>
-                    * maskedEmail: 해당 소셜 계정에서 받은 이메일을 마스킹한 값 (예: az**@kakao.com). 이메일 미제공 시 null <br>
-                    * linkedAt: 연동 일자 (미연동 시 null) <br>
-                    * isUnlinkable: 연동 해제 가능 여부 <br><br>
 
                     **[참고 사항]** <br>
                     * 연동된 소셜이 1개뿐이면 해제 시 계정에 접근할 수 없게 되므로 isUnlinkable=false로 내려갑니다.
