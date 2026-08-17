@@ -72,7 +72,8 @@ public class SocialAccountService implements SocialAccountUseCase {
      */
     @Override
     public void unlink(Long memberId, SocialProvider socialProvider) {
-        SocialAccounts socialAccounts = SocialAccounts.of(loadMemberSocialAccountPort.findAllByMemberId(memberId));
+        // 동시 요청이 각각 다른 플랫폼을 해제해 연동이 0개가 되지 않도록 잠금 후 판정한다
+        SocialAccounts socialAccounts = SocialAccounts.of(loadMemberSocialAccountPort.findAllByMemberIdForUpdate(memberId));
         MemberSocialAccount target = socialAccounts.unlink(socialProvider);
 
         // 플랫폼 연동 해제는 revoke 정보가 사라지기 전에 수행

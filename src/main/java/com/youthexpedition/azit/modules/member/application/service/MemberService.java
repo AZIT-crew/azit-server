@@ -160,7 +160,15 @@ public class MemberService implements MemberUseCase {
 
         // 마지막 연동이 해제되면 로그인 수단이 사라지므로 탈퇴 처리
         log.info("[MEMBER] memberId: {}의 마지막 연동({})이 해제되어 탈퇴 처리합니다.", member.getId(), socialProvider);
-        processWithdrawal(member);
+        try {
+            processWithdrawal(member);
+        } catch (BusinessException e) {
+            // 리더로 소속된 크루가 있으면 탈퇴가 막힌다. 플랫폼에서 이미 해제된 연동이라 서버가 거부할 수 없고,
+            // 여기서 예외를 던지면 플랫폼이 웹훅을 재시도해 같은 실패만 반복되므로 로그만 남기고 종료한다.
+            // 회원은 ACTIVE로 유지되며, 사용자가 플랫폼에서 다시 동의하면 그대로 로그인할 수 있다.
+            log.error("[MEMBER] memberId: {}의 마지막 연동({})이 해제되었으나 탈퇴 처리에 실패했습니다. 수동 처리가 필요합니다. 원인: {}",
+                    member.getId(), socialProvider, e.getErrorCode().getCode());
+        }
     }
 
     private void processWithdrawal(Member member) {

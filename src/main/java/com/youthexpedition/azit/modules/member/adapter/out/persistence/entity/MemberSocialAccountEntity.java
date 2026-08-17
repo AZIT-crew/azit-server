@@ -8,7 +8,15 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "member_social_account")
+@Table(
+        name = "member_social_account",
+        uniqueConstraints = {
+                // 하나의 소셜 계정은 한 회원에게만 연동될 수 있다
+                @UniqueConstraint(name = "uk_social_provider_id", columnNames = {"social_provider", "social_provider_id"}),
+                // 한 회원은 플랫폼당 하나의 계정만 연동할 수 있다
+                @UniqueConstraint(name = "uk_member_social_provider", columnNames = {"member_id", "social_provider"})
+        }
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // 무분별한 객체 생성 제한 (JPA만 생성할 수 있도록)
 @AllArgsConstructor(access = AccessLevel.PRIVATE) // 빌더로만 생성하도록 강제

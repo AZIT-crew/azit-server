@@ -32,6 +32,13 @@ public class MemberSocialAccountPersistenceAdapter implements LoadMemberSocialAc
                 .toList();
     }
 
+    @Override
+    public List<MemberSocialAccount> findAllByMemberIdForUpdate(Long memberId) {
+        return memberSocialAccountRepository.findAllByMemberIdForUpdate(memberId).stream()
+                .map(memberSocialAccountMapper::toDomain)
+                .toList();
+    }
+
     /**
      * saveAndFlush를 쓰는 이유: 연동 시 유니크 제약(social_provider, social_provider_id) 위반을
      * 커밋 시점이 아닌 호출 시점에 DataIntegrityViolationException으로 드러내기 위함.

@@ -17,14 +17,14 @@ class StringFormatUtilTest {
 
         @Test
         @DisplayName("성공 - 구분자로 옵션들을 이어 붙인다")
-        void formatOptionValues_success_joinsWithSeparator() {
+        void formatOptionValues_joinsWithSeparator_whenMultipleOptions() {
             assertThat(StringFormatUtil.formatOptionValues(List.of("블랙", "L")))
                     .isEqualTo("블랙 · L");
         }
 
         @Test
         @DisplayName("성공 - 옵션이 하나면 구분자 없이 그대로 반환한다")
-        void formatOptionValues_success_whenSingleOption() {
+        void formatOptionValues_returnsOptionAsIs_whenSingleOption() {
             assertThat(StringFormatUtil.formatOptionValues(List.of("블랙"))).isEqualTo("블랙");
         }
 
@@ -42,7 +42,7 @@ class StringFormatUtilTest {
 
         @Test
         @DisplayName("성공 - 주문 번호 앞에 접두어를 붙인다")
-        void buildFullOrderNumber_success_addsPrefix() {
+        void buildFullOrderNumber_addsPrefix_whenOrderNumberGiven() {
             assertThat(StringFormatUtil.buildFullOrderNumber("20260817001")).isEqualTo("#20260817001");
         }
 

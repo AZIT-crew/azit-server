@@ -9,6 +9,7 @@ import com.youthexpedition.azit.modules.auth.domain.model.enums.AuthErrorCode;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
+import com.youthexpedition.azit.modules.member.fixture.MemberSocialAccountFixture;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import org.junit.jupiter.api.DisplayName;
@@ -50,13 +51,7 @@ class SocialAccountServiceTest {
     private static final Long OTHER_MEMBER_ID = 2L;
 
     private MemberSocialAccount account(Long id, Long memberId, SocialProvider provider, String providerId) {
-        return MemberSocialAccount.builder()
-                .id(id)
-                .memberId(memberId)
-                .socialProvider(provider)
-                .socialProviderId(providerId)
-                .appleRefreshToken(provider == SocialProvider.APPLE ? "appleRefreshToken" : null)
-                .build();
+        return MemberSocialAccountFixture.account(id, memberId, provider, providerId);
     }
 
     @Nested
@@ -170,7 +165,7 @@ class SocialAccountServiceTest {
             // given
             MemberSocialAccount appleAccount = account(2L, MEMBER_ID, SocialProvider.APPLE, "appleSub");
             doReturn(List.of(account(1L, MEMBER_ID, SocialProvider.KAKAO, "12345"), appleAccount))
-                    .when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+                    .when(loadMemberSocialAccountPort).findAllByMemberIdForUpdate(MEMBER_ID);
 
             // when
             socialAccountService.unlink(MEMBER_ID, SocialProvider.APPLE);
@@ -186,7 +181,7 @@ class SocialAccountServiceTest {
         void unlink_throwsException_whenLastProvider() {
             // given
             doReturn(List.of(account(1L, MEMBER_ID, SocialProvider.KAKAO, "12345")))
-                    .when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+                    .when(loadMemberSocialAccountPort).findAllByMemberIdForUpdate(MEMBER_ID);
 
             // when & then - 플랫폼 연동 해제도 호출되지 않아야 함
             assertThatThrownBy(() -> socialAccountService.unlink(MEMBER_ID, SocialProvider.KAKAO))
@@ -202,7 +197,7 @@ class SocialAccountServiceTest {
             // given
             doReturn(List.of(account(1L, MEMBER_ID, SocialProvider.KAKAO, "12345"),
                     account(3L, MEMBER_ID, SocialProvider.KAKAO, "67890")))
-                    .when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+                    .when(loadMemberSocialAccountPort).findAllByMemberIdForUpdate(MEMBER_ID);
 
             // when & then
             assertThatThrownBy(() -> socialAccountService.unlink(MEMBER_ID, SocialProvider.APPLE))

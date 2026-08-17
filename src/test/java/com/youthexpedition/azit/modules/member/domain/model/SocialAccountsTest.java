@@ -75,14 +75,12 @@ class SocialAccountsTest {
     @DisplayName("실패: 연동되지 않은 플랫폼은 해제할 수 없다.")
     void unlink_throwsException_whenProviderNotLinked() {
         // given
-        SocialAccounts socialAccounts = SocialAccounts.of(List.of(kakaoAccount, appleAccount));
         SocialAccounts onlyKakao = SocialAccounts.of(List.of(kakaoAccount));
 
-        // when & then - 연동 개수와 무관하게 대상이 없으면 PROVIDER_NOT_LINKED
+        // when & then - 해제 가능 여부(CANNOT_UNLINK_LAST_PROVIDER)보다 대상 존재 여부를 먼저 검증한다
         assertThatThrownBy(() -> onlyKakao.unlink(SocialProvider.APPLE))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", MemberErrorCode.PROVIDER_NOT_LINKED);
-        assertThat(socialAccounts.hasProvider(SocialProvider.APPLE)).isTrue();
     }
 
     @Test

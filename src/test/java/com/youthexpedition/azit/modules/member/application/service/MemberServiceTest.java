@@ -24,6 +24,8 @@ import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberTe
 import com.youthexpedition.azit.modules.member.application.service.mapper.MemberResponseMapper;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
 import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
+import com.youthexpedition.azit.modules.member.fixture.MemberFixture;
+import com.youthexpedition.azit.modules.member.fixture.MemberSocialAccountFixture;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
@@ -185,7 +187,7 @@ class MemberServiceTest {
         @DisplayName("실패 - 이미 탈퇴한 회원이면 크루 차감 등 부수효과 없이 예외 발생")
         void withdraw_fail_alreadyWithdrawn() {
             // given
-            Member withdrawnMember = Member.create("test@example.com", "password", "nickname");
+            Member withdrawnMember = Member.create("nickname", "test@example.com", "imageUrl");
             withdrawnMember.withdraw(LocalDateTime.now());
             doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findById(memberId);
 
@@ -229,24 +231,11 @@ class MemberServiceTest {
         private static final Long APPLE_ACCOUNT_ID = 100L;
 
         private MemberSocialAccount socialAccount(Long id, SocialProvider provider, String providerId) {
-            return MemberSocialAccount.builder()
-                    .id(id)
-                    .memberId(MEMBER_ID)
-                    .socialProvider(provider)
-                    .socialProviderId(providerId)
-                    .linkedAt(LocalDateTime.now())
-                    .build();
+            return MemberSocialAccountFixture.account(id, MEMBER_ID, provider, providerId);
         }
 
         private Member activeMember() {
-            return Member.builder()
-                    .id(MEMBER_ID)
-                    .nickname("nickname")
-                    .status(MemberStatus.ACTIVE)
-                    .role(MemberRole.MEMBER)
-                    .totalPoints(0L)
-                    .totalAttendanceCount(0)
-                    .build();
+            return MemberFixture.activeMember(MEMBER_ID);
         }
 
         @Test
@@ -319,11 +308,37 @@ class MemberServiceTest {
             // when
             memberService.handleSocialAccountRevoked("appleSub", SocialProvider.APPLE);
 
-            // then - 소셜 계정 row는 파기 배치가 지우므로 여기서 삭제하지 않는다
+            // then - 소셜 계정 row는 파기 배치가 지우므로 여기서 삭제하지 않는다 (유예기간 내 재로그인 복구용)
             verify(saveMemberSocialAccountPort, never()).deleteById(anyLong());
             verify(tokenPort).deleteByMemberId(MEMBER_ID);
             verify(saveMemberPort).save(member);
             assertEquals(MemberStatus.WITHDRAWN, member.getStatus());
+        }
+
+        @Test
+        @DisplayName("성공 - 리더로 소속된 크루가 있어 탈퇴가 막혀도 예외를 전파하지 않는다 (웹훅 재시도 방지)")
+        void handleSocialAccountRevoked_doesNotPropagate_whenWithdrawalBlockedAsLeader() {
+            // given - 마지막 연동이 해제됐지만 JOINED 상태의 리더인 회원
+            Member member = activeMember();
+            MemberSocialAccount appleAccount = socialAccount(APPLE_ACCOUNT_ID, SocialProvider.APPLE, "appleSub");
+            CrewMember leader = CrewMember.builder()
+                    .crewId(10L)
+                    .memberId(MEMBER_ID)
+                    .role(CrewMemberRole.LEADER)
+                    .status(CrewMemberStatus.JOINED)
+                    .build();
+
+            doReturn(Optional.of(appleAccount)).when(loadMemberSocialAccountPort).findBySocialInfo(SocialProvider.APPLE, "appleSub");
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(MEMBER_ID);
+            doReturn(List.of(appleAccount)).when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+            doReturn(List.of(leader)).when(loadCrewMemberPort).findAllActiveByMemberId(MEMBER_ID);
+
+            // when & then - 예외가 전파되면 플랫폼이 웹훅을 무한 재시도한다
+            assertDoesNotThrow(() -> memberService.handleSocialAccountRevoked("appleSub", SocialProvider.APPLE));
+
+            // 탈퇴는 이루어지지 않고 회원 상태도 유지된다 (수동 처리 대상)
+            verify(saveMemberPort, never()).save(any(Member.class));
+            assertEquals(MemberStatus.ACTIVE, member.getStatus());
         }
     }
 
@@ -392,7 +407,7 @@ class MemberServiceTest {
     class AgreeToTerms {
 
         private final Long memberId = 1L;
-        private final Member member = Member.create("test@example.com", "password", "nickname");
+        private final Member member = Member.create("nickname", "test@example.com", "imageUrl");
 
         private final List<TermsVersion> allLatestVersions = List.of(
                 termsVersion(1L, TermsType.SERVICE, true),
