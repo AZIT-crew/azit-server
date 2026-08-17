@@ -58,7 +58,7 @@ public class SocialAccountService implements SocialAccountUseCase {
                     profile.refreshToken()
             ));
         } catch (DataIntegrityViolationException e) {
-            // 동시에 같은 소셜 계정을 연동한 경우 유니크 제약이 최종 방어선이 된다
+            // 동시에 같은 소셜 계정을 연동한 경우 유니크 제약 체크
             log.warn("[SOCIAL_ACCOUNT] memberId: {}의 {} 연동이 유니크 제약에 걸렸습니다.", memberId, profile.socialProvider());
             throw new BusinessException(AuthErrorCode.SOCIAL_ACCOUNT_ALREADY_LINKED);
         }
@@ -75,7 +75,7 @@ public class SocialAccountService implements SocialAccountUseCase {
         SocialAccounts socialAccounts = SocialAccounts.of(loadMemberSocialAccountPort.findAllByMemberId(memberId));
         MemberSocialAccount target = socialAccounts.unlink(socialProvider);
 
-        // 플랫폼 연동 해제는 revoke 정보가 사라지기 전에 수행해야 한다
+        // 플랫폼 연동 해제는 revoke 정보가 사라지기 전에 수행
         socialAuthPort.revoke(SocialRevokeCommand.from(target));
         saveMemberSocialAccountPort.deleteById(target.getId());
 

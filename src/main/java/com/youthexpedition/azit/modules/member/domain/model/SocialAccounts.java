@@ -3,28 +3,20 @@ package com.youthexpedition.azit.modules.member.domain.model;
 import com.youthexpedition.azit.infrastructure.exception.BusinessException;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
 
 import java.util.List;
 
-/**
- * 한 회원에 연동된 소셜 계정 묶음.
- *
- * "최소 1개는 남아 있어야 한다"는 규칙은 계정 하나만으로는 판단할 수 없어 이 컬렉션이 책임진다.
- * 마지막 연동까지 해제되면 로그인 수단이 사라져 계정에 접근할 수 없게 되므로(계정 미아) 차단한다.
- */
+@Getter
+@Builder
+@AllArgsConstructor
 public class SocialAccounts {
     private final List<MemberSocialAccount> accounts;
 
-    private SocialAccounts(List<MemberSocialAccount> accounts) {
-        this.accounts = accounts;
-    }
-
     public static SocialAccounts of(List<MemberSocialAccount> accounts) {
         return new SocialAccounts(accounts == null ? List.of() : List.copyOf(accounts));
-    }
-
-    public List<MemberSocialAccount> getAccounts() {
-        return accounts;
     }
 
     public boolean hasProvider(SocialProvider socialProvider) {

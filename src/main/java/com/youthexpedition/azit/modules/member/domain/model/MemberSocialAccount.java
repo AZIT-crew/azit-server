@@ -7,10 +7,6 @@ import lombok.Getter;
 
 import java.time.LocalDateTime;
 
-/**
- * 회원에 연동된 소셜 계정. 회원 1명이 여러 플랫폼(카카오/애플)을 동시에 연동할 수 있다.
- * 이메일과 애플 리프레시 토큰은 플랫폼마다 값이 다르므로 Member가 아닌 이곳에서 관리한다.
- */
 @Getter
 @Builder
 @AllArgsConstructor
