@@ -33,9 +33,9 @@ public record LinkedProviderResponse(
             @Schema(description = "연동 해제 가능 여부. 연동된 소셜이 1개뿐이면 false")
             boolean isUnlinkable
     ) {
-        public static LinkedProviderItem linked(SocialProvider provider, String maskedEmail,
+        public static LinkedProviderItem linked(SocialProvider provider, String email,
                                                 LocalDate linkedAt, boolean isUnlinkable) {
-            return new LinkedProviderItem(provider, provider.getDescription(), true, maskedEmail, linkedAt, isUnlinkable);
+            return new LinkedProviderItem(provider, provider.getDescription(), true, email, linkedAt, isUnlinkable);
         }
 
         public static LinkedProviderItem notLinked(SocialProvider provider) {

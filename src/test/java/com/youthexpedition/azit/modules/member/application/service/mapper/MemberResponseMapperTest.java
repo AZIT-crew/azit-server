@@ -63,13 +63,13 @@ class MemberResponseMapperTest {
         LinkedProviderItem kakao = itemOf(response, SocialProvider.KAKAO);
         assertThat(kakao.isLinked()).isTrue();
         assertThat(kakao.providerName()).isEqualTo("카카오");
-        assertThat(kakao.maskedEmail()).isEqualTo("az**@kakao.com");
+        assertThat(kakao.email()).isEqualTo("azit@kakao.com");
         assertThat(kakao.linkedAt()).isEqualTo(LocalDate.of(2026, 2, 26));
 
         LinkedProviderItem apple = itemOf(response, SocialProvider.APPLE);
         assertThat(apple.isLinked()).isFalse();
         assertThat(apple.providerName()).isEqualTo("애플");
-        assertThat(apple.maskedEmail()).isNull();
+        assertThat(apple.email()).isNull();
         assertThat(apple.linkedAt()).isNull();
     }
 
@@ -103,7 +103,7 @@ class MemberResponseMapperTest {
         // 애플이 이메일을 제공하지 않은 경우에도 연동 상태는 그대로 노출된다
         LinkedProviderItem apple = itemOf(response, SocialProvider.APPLE);
         assertThat(apple.isLinked()).isTrue();
-        assertThat(apple.maskedEmail()).isNull();
+        assertThat(apple.email()).isNull();
     }
 
     @Test
