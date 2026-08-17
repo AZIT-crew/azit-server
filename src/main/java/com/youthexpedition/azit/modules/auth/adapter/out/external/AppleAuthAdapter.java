@@ -15,6 +15,7 @@ import com.youthexpedition.azit.modules.auth.application.port.out.SocialAuthPort
 import com.youthexpedition.azit.modules.auth.domain.model.SocialProfile;
 import com.youthexpedition.azit.modules.auth.domain.model.enums.AuthErrorCode;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
+import feign.FeignException;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -105,10 +106,20 @@ public class AppleAuthAdapter implements SocialAuthPort {
         }
 
         String clientSecret = appleJwtUtils.createClientSecret();
-        AppleTokenResponse tokenResponse = appleFeignClient.getToken(
-                clientId, clientSecret, authorizationCode, GRANT_TYPE_AUTHORIZATION_CODE, redirectUrl);
+        try {
+            AppleTokenResponse tokenResponse = appleFeignClient.getToken(
+                    clientId, clientSecret, authorizationCode, GRANT_TYPE_AUTHORIZATION_CODE, redirectUrl);
 
-        return tokenResponse.refreshToken();
+            return tokenResponse.refreshToken();
+        } catch (FeignException.BadRequest e) {
+            // 만료되었거나 이미 사용된 인가 코드 (invalid_grant)
+            log.error("애플 인가 코드 검증에 실패했습니다: {}", e.contentUTF8());
+            throw new BusinessException(AuthErrorCode.INVALID_SOCIAL_CODE);
+        } catch (FeignException e) {
+            // 기타 통신 오류
+            log.error("애플 토큰 요청 중 오류가 발생했습니다: {}", e.getMessage());
+            throw new BusinessException(AuthErrorCode.SOCIAL_AUTHENTICATION_FAILED);
+        }
     }
 
     @Override
