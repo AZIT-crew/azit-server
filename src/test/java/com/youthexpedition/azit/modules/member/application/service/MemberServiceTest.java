@@ -27,6 +27,7 @@ import com.youthexpedition.azit.modules.member.domain.model.Member;
 import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.fixture.MemberFixture;
 import com.youthexpedition.azit.modules.member.fixture.MemberSocialAccountFixture;
+import com.youthexpedition.azit.modules.member.fixture.TermsVersionFixture;
 import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateOptionalTermsCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
@@ -414,14 +415,7 @@ class MemberServiceTest {
         private final Long memberId = 1L;
         private final Member member = Member.create("nickname", "test@example.com", "imageUrl");
 
-        private final List<TermsVersion> allLatestVersions = List.of(
-                termsVersion(1L, TermsType.SERVICE, true),
-                termsVersion(2L, TermsType.PRIVACY, true),
-                termsVersion(3L, TermsType.LOCATION, true),
-                termsVersion(4L, TermsType.THIRD_PARTY, true),
-                termsVersion(5L, TermsType.MARKETING, false),
-                termsVersion(6L, TermsType.NOTIFICATION, false)
-        );
+        private final List<TermsVersion> allLatestVersions = TermsVersionFixture.allLatest();
 
         @Test
         @DisplayName("성공 - 선택 약관 포함 전체 동의")
@@ -530,17 +524,6 @@ class MemberServiceTest {
             verify(saveMemberPort, never()).save(any(Member.class));
             verify(loadTermsVersionPort, never()).findAllLatest();
             verify(saveMemberTermsConsentPort, never()).saveAll(any());
-        }
-
-        private TermsVersion termsVersion(Long id, TermsType type, boolean isRequired) {
-            return TermsVersion.builder()
-                    .id(id)
-                    .termsType(type)
-                    .version("1.0")
-                    .isRequired(isRequired)
-                    .effectiveAt(LocalDateTime.of(2024, 1, 1, 0, 0))
-                    .createdAt(LocalDateTime.of(2024, 1, 1, 0, 0))
-                    .build();
         }
     }
 
@@ -892,17 +875,12 @@ class MemberServiceTest {
     @DisplayName("선택 약관 동의 변경")
     class OptionalTerms {
 
-        private static final Long MARKETING_VERSION_ID = 5L;
-        private static final Long NOTIFICATION_VERSION_ID = 6L;
+        private static final Long MARKETING_VERSION_ID = TermsVersionFixture.MARKETING_VERSION_ID;
 
         private final Long memberId = 1L;
         private final Member member = MemberFixture.activeMember(memberId);
 
-        private final List<TermsVersion> allLatestVersions = List.of(
-                TermsVersion.builder().id(1L).termsType(TermsType.SERVICE).version("1.0").isRequired(true).build(),
-                TermsVersion.builder().id(MARKETING_VERSION_ID).termsType(TermsType.MARKETING).version("1.0").isRequired(false).build(),
-                TermsVersion.builder().id(NOTIFICATION_VERSION_ID).termsType(TermsType.NOTIFICATION).version("1.0").isRequired(false).build()
-        );
+        private final List<TermsVersion> allLatestVersions = TermsVersionFixture.allLatest();
 
         @Test
         @DisplayName("성공 - 마케팅만 동의로 변경하면 알림 동의는 그대로 유지된다")
@@ -1010,7 +988,7 @@ class MemberServiceTest {
         void updateOptionalTerms_throwsException_whenTermsVersionNotFound() {
             // given - 최신 약관 목록에 MARKETING 종류가 없는 경우
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
-            doReturn(List.of(TermsVersion.builder().id(1L).termsType(TermsType.SERVICE).version("1.0").isRequired(true).build()))
+            doReturn(List.of(TermsVersionFixture.termsVersion(TermsVersionFixture.SERVICE_VERSION_ID, TermsType.SERVICE, true)))
                     .when(loadTermsVersionPort).findAllLatest();
 
             // when & then

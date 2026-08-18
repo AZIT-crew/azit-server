@@ -17,7 +17,7 @@ public interface MemberTermsConsentHistoryRepository extends JpaRepository<Membe
             SELECT h FROM MemberTermsConsentHistoryEntity h
             JOIN TermsVersionEntity tv ON tv.id = h.termsVersionId
             WHERE h.memberId = :memberId AND tv.termsType = :termsType
-            ORDER BY h.id DESC
+            ORDER BY h.createdAt DESC, h.id DESC
             """)
     List<MemberTermsConsentHistoryEntity> findLatestByMemberIdAndTermsType(@Param("memberId") Long memberId,
                                                                           @Param("termsType") TermsType termsType,
