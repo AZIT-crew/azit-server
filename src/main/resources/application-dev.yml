@@ -44,6 +44,11 @@ security:
     allowed-methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allowed-headers: ["*"]
     allow-credentials: true
+  allowed-redirect-origins:
+    - "http://localhost:5173"
+    - "https://localhost:5173"
+    - "https://dev.azitcrew.com"
+    - "https://10.0.2.2:5173"
 
 kakao:
   oauth:

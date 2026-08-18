@@ -1,9 +1,14 @@
 package com.youthexpedition.azit.modules.auth.application.service;
 
 import com.youthexpedition.azit.infrastructure.exception.BusinessException;
+import com.youthexpedition.azit.modules.auth.application.port.in.command.CreateAppleLinkSessionCommand;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialLoginCommand;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialRevokeCommand;
+import com.youthexpedition.azit.infrastructure.auth.util.RedirectUrlValidator;
+import com.youthexpedition.azit.modules.auth.application.port.in.dto.AppleLinkSessionResponse;
+import com.youthexpedition.azit.modules.auth.application.port.out.AppleLinkSessionPort;
 import com.youthexpedition.azit.modules.auth.application.port.out.SocialAuthPort;
+import com.youthexpedition.azit.modules.auth.domain.model.AppleLinkSession;
 import com.youthexpedition.azit.modules.auth.domain.model.SocialProfile;
 import com.youthexpedition.azit.modules.auth.domain.model.enums.AuthErrorCode;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
@@ -30,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -43,6 +49,8 @@ class SocialAccountServiceTest {
     @Mock private SocialAuthPort socialAuthPort;
     @Mock private LoadMemberSocialAccountPort loadMemberSocialAccountPort;
     @Mock private SaveMemberSocialAccountPort saveMemberSocialAccountPort;
+    @Mock private AppleLinkSessionPort appleLinkSessionPort;
+    @Mock private RedirectUrlValidator redirectUrlValidator;
 
     @InjectMocks
     private SocialAccountService socialAccountService;
@@ -152,6 +160,80 @@ class SocialAccountServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.MISSING_SOCIAL_CREDENTIAL);
             verify(socialAuthPort, never()).getSocialProfile(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("애플 연동 세션")
+    class AppleLinkSessionTest {
+
+        private static final String REDIRECT_URL = "https://azitcrew.com/settings/accounts";
+
+        private CreateAppleLinkSessionCommand command(String redirectUrl) {
+            return CreateAppleLinkSessionCommand.of(MEMBER_ID, redirectUrl);
+        }
+
+        @Test
+        @DisplayName("성공 - 발급된 state와 회원 정보가 세션으로 저장된다")
+        void createAppleLinkSession_success() {
+            // given - 카카오만 연동한 회원
+            doReturn(List.of(account(1L, MEMBER_ID, SocialProvider.KAKAO, "12345")))
+                    .when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+
+            // when
+            AppleLinkSessionResponse response = socialAccountService.createAppleLinkSession(command(REDIRECT_URL));
+
+            // then - 저장된 state와 응답으로 내려준 state가 같아야 클라이언트가 그대로 사용할 수 있다
+            ArgumentCaptor<String> stateCaptor = ArgumentCaptor.forClass(String.class);
+            ArgumentCaptor<AppleLinkSession> sessionCaptor = ArgumentCaptor.forClass(AppleLinkSession.class);
+            verify(appleLinkSessionPort).save(stateCaptor.capture(), sessionCaptor.capture(), anyLong());
+
+            assertThat(response.state()).isEqualTo(stateCaptor.getValue());
+            assertThat(sessionCaptor.getValue().memberId()).isEqualTo(MEMBER_ID);
+            assertThat(sessionCaptor.getValue().redirectUrl()).isEqualTo(REDIRECT_URL);
+        }
+
+        @Test
+        @DisplayName("성공 - 발급되는 state는 매번 다른 값이다")
+        void createAppleLinkSession_issuesUnpredictableState() {
+            // given
+            doReturn(List.of()).when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+
+            // when
+            String first = socialAccountService.createAppleLinkSession(command(REDIRECT_URL)).state();
+            String second = socialAccountService.createAppleLinkSession(command(REDIRECT_URL)).state();
+
+            // then - 추측 가능한 state는 타인 계정에 애플 계정을 붙이는 공격으로 이어진다
+            assertThat(first).isNotEqualTo(second);
+            assertThat(first).hasSize(32);
+        }
+
+        @Test
+        @DisplayName("실패 - 이미 애플을 연동한 회원은 세션을 발급받을 수 없다")
+        void createAppleLinkSession_throwsException_whenAppleAlreadyLinked() {
+            // given
+            doReturn(List.of(account(1L, MEMBER_ID, SocialProvider.APPLE, "appleSub")))
+                    .when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
+
+            // when & then - 애플 인증 화면까지 보내기 전에 차단되어야 한다
+            assertThatThrownBy(() -> socialAccountService.createAppleLinkSession(command(REDIRECT_URL)))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ALREADY_LINKED_PROVIDER);
+            verify(appleLinkSessionPort, never()).save(anyString(), any(AppleLinkSession.class), anyLong());
+        }
+
+        @Test
+        @DisplayName("실패 - 허용되지 않은 복귀 주소는 세션을 발급하지 않는다")
+        void createAppleLinkSession_throwsException_whenRedirectUrlNotAllowed() {
+            // given
+            doThrow(new BusinessException(AuthErrorCode.INVALID_REDIRECT_URL))
+                    .when(redirectUrlValidator).validate("https://evil.com/callback");
+
+            // when & then
+            assertThatThrownBy(() -> socialAccountService.createAppleLinkSession(command("https://evil.com/callback")))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.INVALID_REDIRECT_URL);
+            verify(appleLinkSessionPort, never()).save(anyString(), any(AppleLinkSession.class), anyLong());
         }
     }
 
