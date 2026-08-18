@@ -1,6 +1,7 @@
 package com.youthexpedition.azit.modules.auth.application.service;
 
 import com.youthexpedition.azit.infrastructure.exception.BusinessException;
+import com.youthexpedition.azit.modules.auth.application.port.in.command.CreateAppleLinkSessionCommand;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialLoginCommand;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialRevokeCommand;
 import com.youthexpedition.azit.infrastructure.auth.util.RedirectUrlValidator;
@@ -168,6 +169,10 @@ class SocialAccountServiceTest {
 
         private static final String REDIRECT_URL = "https://azitcrew.com/settings/accounts";
 
+        private CreateAppleLinkSessionCommand command(String redirectUrl) {
+            return CreateAppleLinkSessionCommand.of(MEMBER_ID, redirectUrl);
+        }
+
         @Test
         @DisplayName("성공 - 발급된 state와 회원 정보가 세션으로 저장된다")
         void createAppleLinkSession_success() {
@@ -176,7 +181,7 @@ class SocialAccountServiceTest {
                     .when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
 
             // when
-            AppleLinkSessionResponse response = socialAccountService.createAppleLinkSession(MEMBER_ID, REDIRECT_URL);
+            AppleLinkSessionResponse response = socialAccountService.createAppleLinkSession(command(REDIRECT_URL));
 
             // then - 저장된 state와 응답으로 내려준 state가 같아야 클라이언트가 그대로 사용할 수 있다
             ArgumentCaptor<String> stateCaptor = ArgumentCaptor.forClass(String.class);
@@ -195,8 +200,8 @@ class SocialAccountServiceTest {
             doReturn(List.of()).when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
 
             // when
-            String first = socialAccountService.createAppleLinkSession(MEMBER_ID, REDIRECT_URL).state();
-            String second = socialAccountService.createAppleLinkSession(MEMBER_ID, REDIRECT_URL).state();
+            String first = socialAccountService.createAppleLinkSession(command(REDIRECT_URL)).state();
+            String second = socialAccountService.createAppleLinkSession(command(REDIRECT_URL)).state();
 
             // then - 추측 가능한 state는 타인 계정에 애플 계정을 붙이는 공격으로 이어진다
             assertThat(first).isNotEqualTo(second);
@@ -211,7 +216,7 @@ class SocialAccountServiceTest {
                     .when(loadMemberSocialAccountPort).findAllByMemberId(MEMBER_ID);
 
             // when & then - 애플 인증 화면까지 보내기 전에 차단되어야 한다
-            assertThatThrownBy(() -> socialAccountService.createAppleLinkSession(MEMBER_ID, REDIRECT_URL))
+            assertThatThrownBy(() -> socialAccountService.createAppleLinkSession(command(REDIRECT_URL)))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ALREADY_LINKED_PROVIDER);
             verify(appleLinkSessionPort, never()).save(anyString(), any(AppleLinkSession.class), anyLong());
@@ -225,7 +230,7 @@ class SocialAccountServiceTest {
                     .when(redirectUrlValidator).validate("https://evil.com/callback");
 
             // when & then
-            assertThatThrownBy(() -> socialAccountService.createAppleLinkSession(MEMBER_ID, "https://evil.com/callback"))
+            assertThatThrownBy(() -> socialAccountService.createAppleLinkSession(command("https://evil.com/callback")))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.INVALID_REDIRECT_URL);
             verify(appleLinkSessionPort, never()).save(anyString(), any(AppleLinkSession.class), anyLong());

@@ -75,7 +75,7 @@ class AppleCallbackServiceTest {
 
             // then
             assertThat(result.isLogin()).isTrue();
-            assertThat(result.authResult()).isEqualTo(expected);
+            assertThat(result.refreshToken()).isEqualTo(expected.authToken().refreshToken());
             assertThat(result.redirectUrl()).isEqualTo(LOGIN_REDIRECT_URL);
             verify(socialAccountUseCase, never()).link(anyLong(), any());
         }

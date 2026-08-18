@@ -3,6 +3,7 @@ package com.youthexpedition.azit.modules.auth.application.service;
 import com.youthexpedition.azit.infrastructure.auth.util.RedirectUrlValidator;
 import com.youthexpedition.azit.infrastructure.exception.BusinessException;
 import com.youthexpedition.azit.modules.auth.application.port.in.SocialAccountUseCase;
+import com.youthexpedition.azit.modules.auth.application.port.in.command.CreateAppleLinkSessionCommand;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialLoginCommand;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialRevokeCommand;
 import com.youthexpedition.azit.modules.auth.application.port.in.dto.AppleLinkSessionResponse;
@@ -83,9 +84,11 @@ public class SocialAccountService implements SocialAccountUseCase {
      * 애플이 콜백에 되돌려준 state로 서버가 연동 대상 회원을 복원한다.
      */
     @Override
-    public AppleLinkSessionResponse createAppleLinkSession(Long memberId, String redirectUrl) {
+    public AppleLinkSessionResponse createAppleLinkSession(CreateAppleLinkSessionCommand command) {
+        Long memberId = command.memberId();
+
         // 연동 후 임의의 사이트로 보내지지 않도록 허용된 복귀 주소만 세션에 담음
-        redirectUrlValidator.validate(redirectUrl);
+        redirectUrlValidator.validate(command.redirectUrl());
 
         // 이미 애플을 연동한 회원이라면 애플 인증 화면까지 보내기 전에 미리 차단
         SocialAccounts socialAccounts = SocialAccounts.of(loadMemberSocialAccountPort.findAllByMemberId(memberId));
@@ -94,7 +97,7 @@ public class SocialAccountService implements SocialAccountUseCase {
         }
 
         String state = UUID.randomUUID().toString().replace("-", "");
-        appleLinkSessionPort.save(state, new AppleLinkSession(memberId, redirectUrl), APPLE_LINK_SESSION_TTL_SECONDS);
+        appleLinkSessionPort.save(state, new AppleLinkSession(memberId, command.redirectUrl()), APPLE_LINK_SESSION_TTL_SECONDS);
 
         log.info("[SOCIAL_ACCOUNT] memberId: {}의 애플 연동 세션이 발급되었습니다.", memberId);
 

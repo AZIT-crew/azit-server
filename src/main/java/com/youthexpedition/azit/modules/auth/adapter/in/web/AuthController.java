@@ -64,7 +64,7 @@ public class AuthController implements AuthControllerDocs {
 
         // 로그인일 경우에만 토큰 세팅
         if (callbackResult.isLogin()) {
-            cookieUtil.setRefreshTokenCookie(response, callbackResult.authResult().authToken().refreshToken());
+            cookieUtil.setRefreshTokenCookie(response, callbackResult.refreshToken());
         }
 
         // 프론트 페이지로 리다이렉트
@@ -101,7 +101,7 @@ public class AuthController implements AuthControllerDocs {
     public CommonResponse<AppleLinkSessionResponse> createAppleLinkSession(@CurrentMemberId Long memberId,
                                                                            @Valid @RequestBody CreateAppleLinkSessionRequest request) {
         return CommonResponse.of(CommonSuccessCode.SUCCESS,
-                socialAccountUseCase.createAppleLinkSession(memberId, request.redirectUrl()));
+                socialAccountUseCase.createAppleLinkSession(request.toCommand(memberId)));
     }
 
     @PostMapping("/social-accounts/{provider}")
