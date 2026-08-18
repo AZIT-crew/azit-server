@@ -4,11 +4,14 @@ import com.youthexpedition.azit.infrastructure.common.util.image.ImageUrlFormatU
 import com.youthexpedition.azit.modules.crew.domain.model.Crew;
 import com.youthexpedition.azit.modules.crew.domain.model.CrewMember;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberStatus;
+import com.youthexpedition.azit.modules.crew.application.port.out.query.JoinedCrewDto;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.CrewNotificationSettingResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse.LinkedProviderItem;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyInfoResponse;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
+import com.youthexpedition.azit.modules.member.domain.model.MemberCrewNotificationSetting;
 import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.domain.model.SocialAccounts;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
@@ -64,6 +67,17 @@ public class MemberResponseMapper {
                 socialAccount.getEmail(),
                 linkedAt,
                 isUnlinkable
+        );
+    }
+
+    public CrewNotificationSettingResponse toCrewNotificationSettingResponse(JoinedCrewDto joinedCrew,
+                                                                            MemberCrewNotificationSetting setting) {
+        return CrewNotificationSettingResponse.of(
+                joinedCrew.crewId(),
+                joinedCrew.name(),
+                imageUrlFormatUtil.buildFullImageUrl(joinedCrew.imageUrl()),
+                setting.isRegularRunEnabled(),
+                setting.isLightningRunEnabled()
         );
     }
 

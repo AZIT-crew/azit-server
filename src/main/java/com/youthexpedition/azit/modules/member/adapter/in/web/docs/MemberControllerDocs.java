@@ -8,8 +8,10 @@ import com.youthexpedition.azit.modules.crew.adapter.in.web.dto.CheckInRequest;
 import com.youthexpedition.azit.modules.crew.application.port.in.dto.CheckInStatusResponse;
 import com.youthexpedition.azit.modules.crew.application.port.in.dto.CrewScheduleListResponse;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.AgreeToTermsRequest;
+import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateCrewNotificationSettingRequest;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateOptionalTermsRequest;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateMemberProfileRequest;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.CrewNotificationSettingResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyAttendanceLogResponse;
@@ -213,6 +215,46 @@ public interface MemberControllerDocs {
             @RequestParam(required = false) Long crewId,
             @Parameter(hidden = true) @CurrentMemberId Long memberId
     );
+
+    @Operation(
+            summary = "크루별 알림 설정 조회",
+            description = """
+            '크루별 알림 설정' 화면에 필요한, 참여 중인 크루(JOINED) 목록과 크루별 알림 설정을 반환합니다. <br><br>
+
+            **[참고 사항]** <br>
+            * 알림 설정을 한 번도 변경하지 않은 크루는 모두 켜진 상태(true)로 세팅됩니다. <br>
+            * 참여 중인 크루가 없으면 빈 배열을 반환합니다. <br>
+            """
+    )
+    @ApiErrorCodeExamples({
+            "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
+    })
+    CommonResponse<List<CrewNotificationSettingResponse>> getCrewNotificationSettings(@Parameter(hidden = true) @CurrentMemberId Long memberId);
+
+    @Operation(
+            summary = "크루별 알림 설정 변경",
+            description = """
+            특정 크루의 알림 설정을 변경합니다. **부분 갱신**이라 바꿀 항목만 담아 보내면 됩니다. <br><br>
+
+            **[요청 방식]** <br>
+            * 크루 '전체알림' 토글: { "allEnabled": false } → 정기런·번개런이 한 번에 변경됩니다. <br>
+            * 개별 토글: { "regularRunEnabled": false } <br>
+            * 두 값을 함께 보내면 allEnabled를 먼저 적용한 뒤 개별 값으로 덮어씁니다. <br><br>
+
+            **[참고 사항]** <br>
+            * 정기런·번개런 중 하나라도 꺼지면 응답의 allEnabled는 false가 됩니다. <br>
+            * 세 항목이 모두 null이면 변경할 대상이 없으므로 거부됩니다. (INVALID_INPUT_VALUE) <br>
+            * 가입 완료(JOINED) 상태인 크루만 설정할 수 있습니다. (NOT_A_CREW_MEMBER)
+            """
+    )
+    @ApiErrorCodeExamples({
+            "NOT_A_CREW_MEMBER", "INVALID_INPUT_VALUE",
+            "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
+    })
+    CommonResponse<CrewNotificationSettingResponse> updateCrewNotificationSetting(
+            @Parameter(hidden = true) @CurrentMemberId Long memberId,
+            @Parameter(description = "크루 ID") Long crewId,
+            @Valid @RequestBody UpdateCrewNotificationSettingRequest request);
 
     @Operation(
             summary = "프로필 수정",

@@ -8,7 +8,9 @@ import com.youthexpedition.azit.modules.crew.application.port.out.LoadCrewPort;
 import com.youthexpedition.azit.modules.crew.application.port.out.SaveCrewMemberPort;
 import com.youthexpedition.azit.modules.crew.application.port.out.SaveCrewPort;
 import com.youthexpedition.azit.modules.crew.domain.model.Crew;
+import com.youthexpedition.azit.modules.crew.application.port.out.query.JoinedCrewDto;
 import com.youthexpedition.azit.modules.crew.domain.model.CrewMember;
+import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewErrorCode;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberRole;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberStatus;
 import com.youthexpedition.azit.modules.image.domain.model.enums.ImageErrorCode;
@@ -17,18 +19,23 @@ import com.youthexpedition.azit.modules.member.application.port.in.command.Updat
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
+import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberCrewNotificationSettingPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberTermsConsentPort;
+import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberCrewNotificationSettingPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadTermsVersionPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberTermsConsentPort;
 import com.youthexpedition.azit.modules.member.application.service.mapper.MemberResponseMapper;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
+import com.youthexpedition.azit.modules.member.domain.model.MemberCrewNotificationSetting;
 import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.fixture.MemberFixture;
 import com.youthexpedition.azit.modules.member.fixture.MemberSocialAccountFixture;
 import com.youthexpedition.azit.modules.member.fixture.TermsVersionFixture;
+import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateCrewNotificationSettingCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateOptionalTermsCommand;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.CrewNotificationSettingResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
@@ -37,6 +44,7 @@ import com.youthexpedition.azit.modules.member.domain.model.enums.MemberRole;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberStatus;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import com.youthexpedition.azit.modules.member.domain.model.enums.TermsType;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -88,6 +96,10 @@ class MemberServiceTest {
     private LoadTermsVersionPort loadTermsVersionPort;
     @Mock
     private LoadMemberTermsConsentPort loadMemberTermsConsentPort;
+    @Mock
+    private LoadMemberCrewNotificationSettingPort loadMemberCrewNotificationSettingPort;
+    @Mock
+    private SaveMemberCrewNotificationSettingPort saveMemberCrewNotificationSettingPort;
     @Mock
     private SaveMemberTermsConsentPort saveMemberTermsConsentPort;
 
@@ -1042,6 +1054,189 @@ class MemberServiceTest {
             assertEquals(marketingChangedAt, response.marketing().changedAt());
             assertFalse(response.notification().agreed());
             assertNull(response.notification().changedAt()); // 변경 이력이 없으면 null
+        }
+    }
+
+    @Nested
+    @DisplayName("크루별 알림 설정")
+    class CrewNotificationSettings {
+
+        private final Long memberId = 1L;
+        private final Long crewId = 10L;
+        private final JoinedCrewDto joinedCrew = new JoinedCrewDto(crewId, "아지트", "crew.png", "한줄 소개");
+
+        @BeforeEach
+        void stubResponseMapper() {
+            // 매퍼는 파생값(allEnabled) 계산만 담당하므로 실제 변환과 동일하게 동작시킨다
+            lenient().when(memberResponseMapper.toCrewNotificationSettingResponse(any(), any()))
+                    .thenAnswer(invocation -> {
+                        JoinedCrewDto crew = invocation.getArgument(0);
+                        MemberCrewNotificationSetting setting = invocation.getArgument(1);
+                        return CrewNotificationSettingResponse.of(crew.crewId(), crew.name(), crew.imageUrl(),
+                                setting.isRegularRunEnabled(), setting.isLightningRunEnabled());
+                    });
+        }
+
+        @Test
+        @DisplayName("성공 - 설정을 변경한 적 없는 크루는 모든 알림이 켜진 상태로 내려간다")
+        void getCrewNotificationSettings_success_returnsAllEnabled_whenNoSettingSaved() {
+            // given
+            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(List.of()).when(loadMemberCrewNotificationSettingPort).findAllByMemberId(memberId);
+
+            // when
+            List<CrewNotificationSettingResponse> response = memberService.getCrewNotificationSettings(memberId);
+
+            // then
+            assertThat(response).hasSize(1);
+            assertThat(response.get(0).allEnabled()).isTrue();
+            assertThat(response.get(0).regularRunEnabled()).isTrue();
+            assertThat(response.get(0).lightningRunEnabled()).isTrue();
+        }
+
+        @Test
+        @DisplayName("성공 - 정기런·번개런 중 하나라도 꺼져 있으면 전체알림은 false로 내려간다")
+        void getCrewNotificationSettings_success_returnsAllEnabledFalse_whenOneRunTypeDisabled() {
+            // given - 번개런만 꺼진 크루
+            MemberCrewNotificationSetting setting = MemberCrewNotificationSetting.defaultSetting(memberId, crewId);
+            setting.update(null, false);
+            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(List.of(setting)).when(loadMemberCrewNotificationSettingPort).findAllByMemberId(memberId);
+
+            // when
+            List<CrewNotificationSettingResponse> response = memberService.getCrewNotificationSettings(memberId);
+
+            // then
+            assertThat(response.get(0).allEnabled()).isFalse();
+            assertThat(response.get(0).regularRunEnabled()).isTrue();
+            assertThat(response.get(0).lightningRunEnabled()).isFalse();
+        }
+
+        @Test
+        @DisplayName("성공 - 참여 중인 크루가 없으면 빈 목록을 반환한다")
+        void getCrewNotificationSettings_success_returnsEmpty_whenNoJoinedCrew() {
+            // given
+            doReturn(List.of()).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+
+            // when
+            List<CrewNotificationSettingResponse> response = memberService.getCrewNotificationSettings(memberId);
+
+            // then
+            assertThat(response).isEmpty();
+            verify(loadMemberCrewNotificationSettingPort, never()).findAllByMemberId(anyLong());
+        }
+
+        @Test
+        @DisplayName("성공 - 크루 전체알림을 끄면 정기런·번개런이 함께 꺼진다")
+        void updateCrewNotificationSetting_success_disablesBothRunTypes_whenAllDisabled() {
+            // given
+            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(Optional.empty()).when(loadMemberCrewNotificationSettingPort).findByMemberIdAndCrewId(memberId, crewId);
+
+            // when
+            CrewNotificationSettingResponse response = memberService.updateCrewNotificationSetting(
+                    memberId, crewId, UpdateCrewNotificationSettingCommand.of(false, null, null));
+
+            // then
+            verify(saveMemberCrewNotificationSettingPort, times(1)).save(argThat(setting ->
+                    !setting.isRegularRunEnabled() && !setting.isLightningRunEnabled()
+            ));
+            assertThat(response.allEnabled()).isFalse();
+            assertThat(response.regularRunEnabled()).isFalse();
+            assertThat(response.lightningRunEnabled()).isFalse();
+        }
+
+        @Test
+        @DisplayName("성공 - 개별 알림 하나만 끄면 나머지는 유지되고 전체알림만 false가 된다")
+        void updateCrewNotificationSetting_success_keepsOtherRunType_whenSingleToggleDisabled() {
+            // given
+            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(Optional.of(MemberCrewNotificationSetting.defaultSetting(memberId, crewId)))
+                    .when(loadMemberCrewNotificationSettingPort).findByMemberIdAndCrewId(memberId, crewId);
+
+            // when - 정기런만 끈다
+            CrewNotificationSettingResponse response = memberService.updateCrewNotificationSetting(
+                    memberId, crewId, UpdateCrewNotificationSettingCommand.of(null, false, null));
+
+            // then
+            assertThat(response.regularRunEnabled()).isFalse();
+            assertThat(response.lightningRunEnabled()).isTrue();
+            assertThat(response.allEnabled()).isFalse();
+        }
+
+        @Test
+        @DisplayName("성공 - 전체알림과 개별 알림을 함께 보내면 개별 알림이 우선한다")
+        void updateCrewNotificationSetting_success_individualOverridesAll() {
+            // given
+            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(Optional.empty()).when(loadMemberCrewNotificationSettingPort).findByMemberIdAndCrewId(memberId, crewId);
+
+            // when - 전체 끄되 정기런은 켠 채로
+            CrewNotificationSettingResponse response = memberService.updateCrewNotificationSetting(
+                    memberId, crewId, UpdateCrewNotificationSettingCommand.of(false, true, null));
+
+            // then
+            assertThat(response.regularRunEnabled()).isTrue();
+            assertThat(response.lightningRunEnabled()).isFalse();
+            assertThat(response.allEnabled()).isFalse();
+        }
+
+        @Test
+        @DisplayName("실패 - 가입하지 않은 크루의 알림 설정은 변경할 수 없다")
+        void updateCrewNotificationSetting_throwsException_whenNotJoinedCrew() {
+            // given - 참여 중인 크루 목록에 없는 크루
+            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+
+            // when & then
+            BusinessException exception = assertThrows(BusinessException.class, () ->
+                    memberService.updateCrewNotificationSetting(memberId, 999L,
+                            UpdateCrewNotificationSettingCommand.of(false, null, null))
+            );
+
+            assertEquals(CrewErrorCode.NOT_A_CREW_MEMBER.getCode(), exception.getErrorCode().getCode());
+            verify(saveMemberCrewNotificationSettingPort, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("성공 - 전체 알림을 켜면 꺼져 있던 크루 알림도 모두 켜진다")
+        void updateOptionalTerms_success_enablesAllCrewNotifications_whenNotificationTurnedOn() {
+            // given - 번개런이 꺼져 있는 크루와, 이미 모두 켜져 있는 크루
+            Member member = MemberFixture.activeMember(memberId);
+            MemberCrewNotificationSetting disabledSetting = MemberCrewNotificationSetting.defaultSetting(memberId, crewId);
+            disabledSetting.update(null, false);
+            MemberCrewNotificationSetting enabledSetting = MemberCrewNotificationSetting.defaultSetting(memberId, 20L);
+
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(TermsVersionFixture.allLatest()).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+            doReturn(List.of(disabledSetting, enabledSetting))
+                    .when(loadMemberCrewNotificationSettingPort).findAllByMemberId(memberId);
+
+            // when
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, true));
+
+            // then - 이미 켜져 있던 크루는 저장 대상에서 제외된다
+            verify(saveMemberCrewNotificationSettingPort, times(1)).saveAll(argThat(settings ->
+                    settings.size() == 1 && settings.get(0).isAllEnabled()
+            ));
+            assertThat(disabledSetting.isAllEnabled()).isTrue();
+        }
+
+        @Test
+        @DisplayName("성공 - 전체 알림을 끄면 크루별 설정은 그대로 보존된다")
+        void updateOptionalTerms_success_keepsCrewNotifications_whenNotificationTurnedOff() {
+            // given
+            Member member = MemberFixture.activeMember(memberId);
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(TermsVersionFixture.allLatest()).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+
+            // when
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, false));
+
+            // then - 마스터 스위치를 끈 것이므로 크루별 설정은 건드리지 않는다
+            verify(loadMemberCrewNotificationSettingPort, never()).findAllByMemberId(anyLong());
+            verify(saveMemberCrewNotificationSettingPort, never()).saveAll(anyList());
         }
     }
 }

@@ -3,6 +3,7 @@ package com.youthexpedition.azit.modules.member.application.service;
 import com.youthexpedition.azit.infrastructure.exception.BusinessException;
 import com.youthexpedition.azit.modules.auth.application.port.out.TokenPort;
 import com.youthexpedition.azit.modules.crew.application.port.out.LoadCrewMemberPort;
+import com.youthexpedition.azit.modules.crew.application.port.out.query.JoinedCrewDto;
 import com.youthexpedition.azit.modules.crew.application.port.out.LoadCrewPort;
 import com.youthexpedition.azit.modules.crew.application.port.out.SaveCrewMemberPort;
 import com.youthexpedition.azit.modules.crew.application.port.out.SaveCrewPort;
@@ -15,14 +16,18 @@ import com.youthexpedition.azit.modules.member.application.port.in.MemberUseCase
 import com.youthexpedition.azit.infrastructure.common.util.image.ImageUpdateUtil;
 import com.youthexpedition.azit.modules.member.application.port.in.command.AgreeToTermsCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateMemberProfileCommand;
+import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateCrewNotificationSettingCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateOptionalTermsCommand;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.CrewNotificationSettingResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse.OptionalTermsItem;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyInfoResponse;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberPort;
+import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberCrewNotificationSettingPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberTermsConsentPort;
+import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberCrewNotificationSettingPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadTermsVersionPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPort;
@@ -30,6 +35,7 @@ import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberSo
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberTermsConsentPort;
 import com.youthexpedition.azit.modules.member.application.service.mapper.MemberResponseMapper;
 import com.youthexpedition.azit.modules.member.domain.model.Member;
+import com.youthexpedition.azit.modules.member.domain.model.MemberCrewNotificationSetting;
 import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.domain.model.SocialAccounts;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsent;
@@ -67,6 +73,8 @@ public class MemberService implements MemberUseCase {
     private final ImageUpdateUtil imageUpdateUtil;
     private final LoadTermsVersionPort loadTermsVersionPort;
     private final LoadMemberTermsConsentPort loadMemberTermsConsentPort;
+    private final LoadMemberCrewNotificationSettingPort loadMemberCrewNotificationSettingPort;
+    private final SaveMemberCrewNotificationSettingPort saveMemberCrewNotificationSettingPort;
     private final SaveMemberTermsConsentPort saveMemberTermsConsentPort;
 
     private static final String BLACKLIST_REASON_WITHDRAWN = "withdrawn";
@@ -280,6 +288,11 @@ public class MemberService implements MemberUseCase {
         }
         if (command.notificationAgreed() != null) {
             applyOptionalConsent(member, TermsType.NOTIFICATION, command.notificationAgreed(), consentedVersionIds, now);
+
+            // 전체 알림을 켜면 크루별 알림도 모두 켠다. 끌 때는 발송만 막고 크루별 설정은 보존한다
+            if (command.notificationAgreed()) {
+                enableAllCrewNotifications(memberId);
+            }
         }
 
         saveMemberPort.save(member);
@@ -314,6 +327,66 @@ public class MemberService implements MemberUseCase {
 
         log.info("[MEMBER] memberId: {} 의 {} 약관 동의가 {} 로 변경되었습니다.",
                 member.getId(), termsType, agreed ? "동의" : "거부");
+    }
+
+    @Override
+    public List<CrewNotificationSettingResponse> getCrewNotificationSettings(Long memberId) {
+        List<JoinedCrewDto> joinedCrews = loadCrewMemberPort.findJoinedCrewsByMemberId(memberId);
+        if (joinedCrews.isEmpty()) return List.of();
+
+        Map<Long, MemberCrewNotificationSetting> settingsByCrewId = loadSettingsByCrewId(memberId);
+
+        return joinedCrews.stream()
+                .map(joinedCrew -> {
+                    MemberCrewNotificationSetting setting = settingsByCrewId.getOrDefault(
+                            joinedCrew.crewId(), MemberCrewNotificationSetting.defaultSetting(memberId, joinedCrew.crewId()));
+                    return memberResponseMapper.toCrewNotificationSettingResponse(joinedCrew, setting);
+                })
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public CrewNotificationSettingResponse updateCrewNotificationSetting(Long memberId, Long crewId,
+                                                                         UpdateCrewNotificationSettingCommand command) {
+        JoinedCrewDto joinedCrew = loadCrewMemberPort.findJoinedCrewsByMemberId(memberId).stream()
+                .filter(crew -> crew.crewId().equals(crewId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(CrewErrorCode.NOT_A_CREW_MEMBER)); // 가입한 크루만 설정 가능
+
+        MemberCrewNotificationSetting setting = loadMemberCrewNotificationSettingPort
+                .findByMemberIdAndCrewId(memberId, crewId)
+                .orElseGet(() -> MemberCrewNotificationSetting.defaultSetting(memberId, crewId));
+
+        // 전체알림을 먼저 적용한 뒤 개별 항목으로 덮어쓰기
+        if (command.allEnabled() != null) {
+            setting.updateAll(command.allEnabled());
+        }
+        setting.update(command.regularRunEnabled(), command.lightningRunEnabled());
+
+        saveMemberCrewNotificationSettingPort.save(setting);
+        log.info("[MEMBER] memberId: {}, crewId: {} 의 알림 설정이 변경되었습니다. (정기런: {}, 번개런: {})",
+                memberId, crewId, setting.isRegularRunEnabled(), setting.isLightningRunEnabled());
+
+        return memberResponseMapper.toCrewNotificationSettingResponse(joinedCrew, setting);
+    }
+
+    // 전체 알림을 켜면 참여 중인 크루의 알림도 모두 켜기
+    private void enableAllCrewNotifications(Long memberId) {
+        List<MemberCrewNotificationSetting> settings = loadMemberCrewNotificationSettingPort.findAllByMemberId(memberId).stream()
+                .filter(setting -> !setting.isAllEnabled())
+                .toList();
+
+        if (settings.isEmpty()) return;
+
+        settings.forEach(setting -> setting.updateAll(true));
+        saveMemberCrewNotificationSettingPort.saveAll(settings);
+        log.info("[MEMBER] memberId: {} 의 전체 알림이 켜져 크루 {}곳의 알림 설정을 모두 켭니다.", memberId, settings.size());
+    }
+
+    private Map<Long, MemberCrewNotificationSetting> loadSettingsByCrewId(Long memberId) {
+        return loadMemberCrewNotificationSettingPort.findAllByMemberId(memberId).stream()
+                .collect(Collectors.toMap(MemberCrewNotificationSetting::getCrewId, setting -> setting));
     }
 
     private TermsVersion loadLatestTermsVersion(TermsType termsType) {
