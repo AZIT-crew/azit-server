@@ -26,6 +26,11 @@ public enum AuthErrorCode implements BaseErrorCode {
     SOCIAL_ACCOUNT_ALREADY_LINKED("SOCIAL_ACCOUNT_ALREADY_LINKED", "이미 다른 계정에 연동된 정보입니다.", HttpStatus.CONFLICT),
     ALREADY_LINKED_PROVIDER("ALREADY_LINKED_PROVIDER", "이미 연동된 소셜 계정입니다.", HttpStatus.CONFLICT),
 
+    // 애플 계정 연동 (연동 세션 방식)
+    APPLE_LINK_REQUIRES_LINK_SESSION("APPLE_LINK_REQUIRES_LINK_SESSION", "애플 연동은 연동 세션 발급 후 애플 인증 화면을 통해 진행해야 합니다.", HttpStatus.BAD_REQUEST),
+    APPLE_LINK_SESSION_CREATION_FAILED("APPLE_LINK_SESSION_CREATION_FAILED", "애플 연동 세션 생성에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
+    INVALID_REDIRECT_URL("INVALID_REDIRECT_URL", "허용되지 않은 리다이렉트 주소입니다.", HttpStatus.BAD_REQUEST),
+
     // 소셜 연동 해제
     KAKAO_REVOKE_FAILED("KAKAO_REVOKE_FAILED", "카카오 계정 연동 해제에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),
     APPLE_REVOKE_FAILED("APPLE_REVOKE_FAILED", "애플 계정 연동 해제에 실패했습니다.", HttpStatus.INTERNAL_SERVER_ERROR),

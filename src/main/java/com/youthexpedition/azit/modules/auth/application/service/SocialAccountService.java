@@ -1,10 +1,14 @@
 package com.youthexpedition.azit.modules.auth.application.service;
 
+import com.youthexpedition.azit.infrastructure.auth.util.RedirectUrlValidator;
 import com.youthexpedition.azit.infrastructure.exception.BusinessException;
 import com.youthexpedition.azit.modules.auth.application.port.in.SocialAccountUseCase;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialLoginCommand;
 import com.youthexpedition.azit.modules.auth.application.port.in.command.SocialRevokeCommand;
+import com.youthexpedition.azit.modules.auth.application.port.in.dto.AppleLinkSessionResponse;
+import com.youthexpedition.azit.modules.auth.application.port.out.AppleLinkSessionPort;
 import com.youthexpedition.azit.modules.auth.application.port.out.SocialAuthPort;
+import com.youthexpedition.azit.modules.auth.domain.model.AppleLinkSession;
 import com.youthexpedition.azit.modules.auth.domain.model.SocialProfile;
 import com.youthexpedition.azit.modules.auth.domain.model.enums.AuthErrorCode;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
@@ -18,6 +22,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 @Service
 @Slf4j
 @RequiredArgsConstructor
@@ -26,6 +32,11 @@ public class SocialAccountService implements SocialAccountUseCase {
     private final SocialAuthPort socialAuthPort;
     private final LoadMemberSocialAccountPort loadMemberSocialAccountPort;
     private final SaveMemberSocialAccountPort saveMemberSocialAccountPort;
+    private final AppleLinkSessionPort appleLinkSessionPort;
+    private final RedirectUrlValidator redirectUrlValidator;
+
+    // 애플 인증 화면에서 사용자가 인증을 마치기까지의 여유 시간
+    private static final long APPLE_LINK_SESSION_TTL_SECONDS = 300;
 
     /**
      * 로그인 중인 회원에 소셜 계정을 추가로 연동한다.
@@ -67,12 +78,36 @@ public class SocialAccountService implements SocialAccountUseCase {
     }
 
     /**
+     * 애플 연동을 시작할 회원을 식별하기 위한 일회용 state를 발급한다.
+     * 클라이언트는 이 값을 애플 인증 요청의 state 파라미터에 그대로 실어 보내고,
+     * 애플이 콜백에 되돌려준 state로 서버가 연동 대상 회원을 복원한다.
+     */
+    @Override
+    public AppleLinkSessionResponse createAppleLinkSession(Long memberId, String redirectUrl) {
+        // 연동 후 임의의 사이트로 보내지지 않도록 허용된 복귀 주소만 세션에 담음
+        redirectUrlValidator.validate(redirectUrl);
+
+        // 이미 애플을 연동한 회원이라면 애플 인증 화면까지 보내기 전에 미리 차단
+        SocialAccounts socialAccounts = SocialAccounts.of(loadMemberSocialAccountPort.findAllByMemberId(memberId));
+        if (socialAccounts.hasProvider(SocialProvider.APPLE)) {
+            throw new BusinessException(AuthErrorCode.ALREADY_LINKED_PROVIDER);
+        }
+
+        String state = UUID.randomUUID().toString().replace("-", "");
+        appleLinkSessionPort.save(state, new AppleLinkSession(memberId, redirectUrl), APPLE_LINK_SESSION_TTL_SECONDS);
+
+        log.info("[SOCIAL_ACCOUNT] memberId: {}의 애플 연동 세션이 발급되었습니다.", memberId);
+
+        return AppleLinkSessionResponse.of(state);
+    }
+
+    /**
      * 소셜 계정 연동을 해제한다. 프로필·활동 데이터는 삭제하지 않고 계정에 그대로 유지된다.
      * 마지막 하나 남은 연동은 해제할 수 없다(계정 미아 방지).
      */
     @Override
     public void unlink(Long memberId, SocialProvider socialProvider) {
-        // 동시 요청이 각각 다른 플랫폼을 해제해 연동이 0개가 되지 않도록 잠금 후 판정한다
+        // 동시 요청이 각각 다른 플랫폼을 해제해 연동이 0개가 되지 않도록 잠금 후 판정
         SocialAccounts socialAccounts = SocialAccounts.of(loadMemberSocialAccountPort.findAllByMemberIdForUpdate(memberId));
         MemberSocialAccount target = socialAccounts.unlink(socialProvider);
 

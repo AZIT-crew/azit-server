@@ -41,6 +41,8 @@ security:
     allowed-methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allowed-headers: ["*"]
     allow-credentials: true
+  allowed-redirect-origins:
+    - "https://azitcrew.com"
 
 kakao:
   oauth:

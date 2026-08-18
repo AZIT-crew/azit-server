@@ -7,9 +7,13 @@ import com.youthexpedition.azit.infrastructure.common.response.CommonResponse;
 import com.youthexpedition.azit.infrastructure.common.response.code.CommonSuccessCode;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.docs.AuthControllerDocs;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.AppleNotificationRequest;
+import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.CreateAppleLinkSessionRequest;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.LinkSocialAccountRequest;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.SocialLoginRequest;
+import com.youthexpedition.azit.modules.auth.application.port.in.dto.AppleCallbackResult;
+import com.youthexpedition.azit.modules.auth.application.port.in.dto.AppleLinkSessionResponse;
 import com.youthexpedition.azit.modules.auth.application.port.in.dto.SocialLoginResponse;
+import com.youthexpedition.azit.modules.auth.application.port.in.AppleCallbackUseCase;
 import com.youthexpedition.azit.modules.auth.application.port.in.AppleNotificationUseCase;
 import com.youthexpedition.azit.modules.auth.application.port.in.SocialAccountUseCase;
 import com.youthexpedition.azit.modules.auth.application.port.in.SocialLoginUseCase;
@@ -32,6 +36,7 @@ import java.io.IOException;
 public class AuthController implements AuthControllerDocs {
 
     private final SocialLoginUseCase socialLoginUseCase;
+    private final AppleCallbackUseCase appleCallbackUseCase;
     private final AppleNotificationUseCase appleNotificationUseCase;
     private final SocialAccountUseCase socialAccountUseCase;
     private final TokenUseCase tokenUseCase;
@@ -49,18 +54,21 @@ public class AuthController implements AuthControllerDocs {
         return CommonResponse.of(CommonSuccessCode.SUCCESS, loginResponse);
     }
 
-    // 애플 로그인 전용
+    // 애플 로그인·연동 공통 콜백 (애플 서버가 직접 호출)
     @PostMapping(value = "/social-login/apple", consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE)
     public void appleLogin(@RequestParam("code") String code, @RequestParam("id_token") String idToken,
                            @RequestParam(value = "user", required = false) String user,
                            @RequestParam(value = "state", required = false) String state, HttpServletResponse response) throws IOException {
         SocialLoginCommand command = SocialLoginCommand.of(SocialProvider.APPLE, code, idToken, user);
-        AuthResult authResult = socialLoginUseCase.login(command);
+        AppleCallbackResult callbackResult = appleCallbackUseCase.handle(command, state);
 
-        cookieUtil.setRefreshTokenCookie(response, authResult.authToken().refreshToken());
+        // 로그인일 경우에만 토큰 세팅
+        if (callbackResult.isLogin()) {
+            cookieUtil.setRefreshTokenCookie(response, callbackResult.authResult().authToken().refreshToken());
+        }
 
         // 프론트 페이지로 리다이렉트
-        response.sendRedirect(state);
+        response.sendRedirect(callbackResult.redirectUrl());
     }
 
     @PostMapping("/reissue")
@@ -87,6 +95,13 @@ public class AuthController implements AuthControllerDocs {
         appleNotificationUseCase.handleNotification(request.payload());
 
         return CommonResponse.of(CommonSuccessCode.SUCCESS);
+    }
+
+    @PostMapping("/social-accounts/apple/link-session")
+    public CommonResponse<AppleLinkSessionResponse> createAppleLinkSession(@CurrentMemberId Long memberId,
+                                                                           @Valid @RequestBody CreateAppleLinkSessionRequest request) {
+        return CommonResponse.of(CommonSuccessCode.SUCCESS,
+                socialAccountUseCase.createAppleLinkSession(memberId, request.redirectUrl()));
     }
 
     @PostMapping("/social-accounts/{provider}")

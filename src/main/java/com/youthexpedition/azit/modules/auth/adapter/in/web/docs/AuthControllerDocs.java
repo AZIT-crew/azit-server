@@ -5,8 +5,10 @@ import com.youthexpedition.azit.infrastructure.common.annotation.CurrentMemberId
 import com.youthexpedition.azit.infrastructure.common.response.CommonResponse;
 import com.youthexpedition.azit.infrastructure.config.swagger.ApiErrorCodeExamples;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.AppleNotificationRequest;
+import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.CreateAppleLinkSessionRequest;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.LinkSocialAccountRequest;
 import com.youthexpedition.azit.modules.auth.adapter.in.web.dto.SocialLoginRequest;
+import com.youthexpedition.azit.modules.auth.application.port.in.dto.AppleLinkSessionResponse;
 import com.youthexpedition.azit.modules.auth.application.port.in.dto.SocialLoginResponse;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,13 +42,20 @@ public interface AuthControllerDocs {
             @PathVariable SocialProvider provider, @Valid @RequestBody SocialLoginRequest request, HttpServletResponse response);
 
     @Operation(
-            summary = "애플 소셜 로그인 (백엔드 전용)",
+            summary = "애플 로그인·연동 콜백 (백엔드 전용)",
             description = """
-            애플 서버로부터 직접 리다이렉트되는 콜백 엔드포인트입니다. 클라이언트가 아닌 서버 간 통신을 통해 로그인을 처리합니다. <br><br>
+            애플 서버로부터 직접 리다이렉트되는 콜백 엔드포인트입니다. 클라이언트가 아닌 서버 간 통신을 통해 처리합니다. <br><br>
+
+            **[state 값에 따른 분기]** <br>
+            * 연동 세션 발급 API로 받은 state인 경우: 해당 회원에 애플 계정을 추가 연동한 뒤, 세션에 등록된 프론트 주소로 리다이렉트합니다.
+              결과는 쿼리 파라미터로 전달됩니다. (성공: `?result=success`, 실패: `?result=fail&error=에러코드`) <br>
+            * 그 외의 경우: 기존과 동일하게 로그인으로 처리하고 state에 담긴 프론트 주소로 리다이렉트합니다.
+              허용되지 않은 주소이면 INVALID_REDIRECT_URL로 차단됩니다. <br>
             """
     )
     @ApiErrorCodeExamples({
-            "INVALID_APPLE_ID_TOKEN", "APPLE_PUBLIC_KEY_NOT_FOUND", "APPLE_CLIENT_SECRET_CREATION_FAILED", "WITHDRAWAL_GRACE_PERIOD_EXPIRED"
+            "INVALID_APPLE_ID_TOKEN", "APPLE_PUBLIC_KEY_NOT_FOUND", "APPLE_CLIENT_SECRET_CREATION_FAILED",
+            "INVALID_REDIRECT_URL", "WITHDRAWAL_GRACE_PERIOD_EXPIRED"
     })
     void appleLogin(@RequestParam("code") String code, @RequestParam("id_token") String idToken,
                     @RequestParam(value = "user", required = false) String user,
@@ -98,23 +107,45 @@ public interface AuthControllerDocs {
     CommonResponse<Void> receiveAppleNotification(@Valid @RequestBody AppleNotificationRequest request);
 
     @Operation(
-            summary = "소셜 계정 연동",
+            summary = "애플 연동 세션 발급",
+            description = """
+            애플 계정 추가 연동을 시작하기 위한 일회용 state를 발급합니다. <br><br>
+
+            **[사용 방법]** <br>
+            1. 이 API를 호출해 state를 발급받습니다. (유효 시간 5분, 1회만 사용 가능) <br>
+            2. 애플 인증 URL의 state 파라미터에 발급받은 값을 그대로 넣어 웹뷰로 엽니다.
+               redirect_uri는 로그인과 동일한 서버 주소를 사용합니다. <br>
+            3. 인증이 끝나면 애플이 서버 콜백을 호출해 연동을 처리하고, redirectUrl로 결과와 함께 리다이렉트합니다. <br><br>
+
+            **[참고 사항]** <br>
+            * redirectUrl은 서버에 등록된 허용 origin이어야 합니다. (INVALID_REDIRECT_URL) <br>
+            * 이미 애플을 연동한 회원은 세션 발급 단계에서 차단됩니다. (ALREADY_LINKED_PROVIDER)
+            """
+    )
+    @ApiErrorCodeExamples({
+            "ALREADY_LINKED_PROVIDER", "INVALID_REDIRECT_URL", "APPLE_LINK_SESSION_CREATION_FAILED", "UNAUTHORIZED"
+    })
+    CommonResponse<AppleLinkSessionResponse> createAppleLinkSession(
+            @Parameter(hidden = true) @CurrentMemberId Long memberId, @Valid @RequestBody CreateAppleLinkSessionRequest request);
+
+    @Operation(
+            summary = "소셜 계정 연동 (애플 제외)",
             description = """
             로그인 중인 계정에 다른 소셜 플랫폼 계정을 추가로 연동합니다. <br><br>
 
             **[요청 값]** <br>
             * 카카오(웹 OAuth): authorizationCode <br>
-            * 카카오(네이티브 SDK): accessToken <br>
-            * 애플: authorizationCode + idToken <br><br>
+            * 카카오(네이티브 SDK): accessToken <br><br>
 
             **[참고 사항]** <br>
+            * 애플은 인가 코드가 서버로 직접 전달되므로 이 API로 연동할 수 없습니다. '애플 연동 세션 발급' API를 사용해야 합니다. (APPLE_LINK_REQUIRES_LINK_SESSION) <br>
             * 해당 소셜 계정이 이미 다른 회원에게 연동되어 있으면 연동이 차단됩니다. (SOCIAL_ACCOUNT_ALREADY_LINKED) <br>
             * 이미 같은 플랫폼을 연동한 경우 추가로 연동할 수 없습니다. (ALREADY_LINKED_PROVIDER)
             """
     )
     @ApiErrorCodeExamples({
             "SOCIAL_ACCOUNT_ALREADY_LINKED", "ALREADY_LINKED_PROVIDER", "MISSING_SOCIAL_CREDENTIAL",
-            "INVALID_SOCIAL_CODE", "INVALID_SOCIAL_PROVIDER", "SOCIAL_AUTHENTICATION_FAILED", "INVALID_APPLE_ID_TOKEN"
+            "INVALID_SOCIAL_CODE", "INVALID_SOCIAL_PROVIDER", "SOCIAL_AUTHENTICATION_FAILED", "APPLE_LINK_REQUIRES_LINK_SESSION"
     })
     CommonResponse<Void> linkSocialAccount(
             @Parameter(hidden = true) @CurrentMemberId Long memberId, @PathVariable SocialProvider provider,
