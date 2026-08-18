@@ -8,8 +8,10 @@ import com.youthexpedition.azit.modules.crew.adapter.in.web.dto.CheckInRequest;
 import com.youthexpedition.azit.modules.crew.application.port.in.dto.CheckInStatusResponse;
 import com.youthexpedition.azit.modules.crew.application.port.in.dto.CrewScheduleListResponse;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.AgreeToTermsRequest;
+import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateOptionalTermsRequest;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateMemberProfileRequest;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyAttendanceLogResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyAttendanceMonthlyListResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
@@ -29,13 +31,18 @@ import java.util.List;
 public interface MemberControllerDocs {
 
     @Operation(
-            summary = "약관 동의",
+            summary = "약관 동의 (가입 완료 단계)",
             description = """
-            소셜 로그인 직후 '약관 동의 대기(PENDING_TERMS)' 상태인 회원이 필수 서비스 약관에 동의하는 단계입니다. <br><br>
-            
+            소셜 로그인 직후 '약관 동의 대기(PENDING_TERMS)' 상태인 회원이 약관에 동의하고 가입을 완료하는 단계입니다. <br><br>
+            * 필수 약관 동의 시점(essentialTermsAgreedAt)을 호출 시점으로 기록하고 회원 상태를 ACTIVE로 전환합니다. <br>
+            * 요청에 담긴 6종 약관 전체에 대해 동의 상태와 이력을 저장합니다. <br><br>
+
             **[제약 사항]** <br>
-            * '약관 동의 대기(PENDING_TERMS)' 상태의 회원만 호출 가능합니다. (INVALID_MEMBER_STATUS)
-            * 필수 약관 중 하나라도 누락될 경우 가입이 진행되지 않습니다. (REQUIRED_TERMS_NOT_AGREED)
+            * 필수 약관 중 하나라도 누락될 경우 가입이 진행되지 않습니다. (REQUIRED_TERMS_NOT_AGREED) <br><br>
+
+            **[주의]** <br>
+            * 이 API는 가입 완료 전용입니다. 호출할 때마다 필수 약관 동의 시점이 갱신되고 회원 상태가 ACTIVE로 덮어써지므로,
+              마케팅 정보 수신 동의 같은 선택 약관 토글에는 사용하지 말고 전용 API(PATCH /api/v1/members/me/terms/optional)를 사용하세요.
             """
     )
     @ApiErrorCodeExamples({
@@ -254,4 +261,43 @@ public interface MemberControllerDocs {
             "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
     })
     CommonResponse<LinkedProviderResponse> getLinkedProviders(@Parameter(hidden = true) @CurrentMemberId Long memberId);
+
+    @Operation(
+            summary = "선택 약관 동의 조회",
+            description = """
+            알림 설정 화면의 선택 약관 토글 상태를 조회합니다. <br><br>
+            * 각 항목의 agreed는 토글 on/off, changedAt은 동의 여부를 마지막으로 변경한 일시(yyyy-MM-dd HH:mm:ss)입니다. 변경 이력이 없으면 null 입니다. <br><br>
+            """
+    )
+    @ApiErrorCodeExamples({
+            "MEMBER_NOT_FOUND",
+            "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
+    })
+    CommonResponse<OptionalTermsResponse> getOptionalTerms(@Parameter(hidden = true) @CurrentMemberId Long memberId);
+
+    @Operation(
+            summary = "선택 약관 동의 변경",
+            description = """
+            알림 설정 화면에서 선택 약관(마케팅 정보 수신 / 전체 알림) 토글을 켜거나 끕니다. <br><br>
+
+            **[요청 방식]** <br>
+            * 부분 갱신입니다. 변경할 항목만 담아 보내고, 건드리지 않을 항목은 null로 두거나 생략하세요. <br>
+            * 예) 마케팅만 끄기: { "marketingAgreed": false } <br><br>
+
+            **[처리 내용]** <br>
+            * 동의 시 최신 약관 버전에 대한 동의가 저장되고, 이미 동의한 상태라면 동의 시점이 갱신됩니다. <br>
+            * 동의/거부와 관계없이 변경 이력이 저장됩니다. <br>
+            * 같은 값으로 다시 호출해도 오류 없이 변경 시점만 갱신됩니다. <br><br>
+
+            **[참고 사항]** <br>
+            * 두 항목이 모두 null이면 변경할 대상이 없으므로 거부됩니다. (INVALID_INPUT_VALUE) <br>
+            * 이 API는 선택 약관 전용입니다. 필수 약관과 가입 완료 처리는 POST /api/v1/members/terms 를 사용하세요.
+            """
+    )
+    @ApiErrorCodeExamples({
+            "MEMBER_NOT_FOUND", "MEMBER_ALREADY_WITHDRAWN", "INVALID_INPUT_VALUE", "TERMS_VERSION_NOT_FOUND",
+            "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
+    })
+    CommonResponse<OptionalTermsResponse> updateOptionalTerms(@Parameter(hidden = true) @CurrentMemberId Long memberId,
+                                                              @Valid @RequestBody UpdateOptionalTermsRequest request);
 }

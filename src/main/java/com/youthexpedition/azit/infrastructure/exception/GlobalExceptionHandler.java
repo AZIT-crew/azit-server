@@ -7,6 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.NestedExceptionUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -44,10 +47,7 @@ public class GlobalExceptionHandler {
     protected ResponseEntity<CommonErrorResponse> handleMethodArgumentNotValidException(MethodArgumentNotValidException e) {
         log.warn("MethodArgumentNotValidException: {}", e.getMessage());
 
-        // 에러 결과에서 첫 번째 FieldError의 메시지 가져오기
-        String errorMessage = Objects.requireNonNull(e.getBindingResult()
-                        .getFieldError())
-                .getDefaultMessage();
+        String errorMessage = resolveValidationMessage(e.getBindingResult());
 
         return ResponseEntity
                 .status(CommonErrorCode.INVALID_INPUT_VALUE.getStatus())
@@ -55,6 +55,23 @@ public class GlobalExceptionHandler {
                         CommonErrorCode.INVALID_INPUT_VALUE.getCode(),
                         errorMessage
                 ));
+    }
+
+    /**
+     * 검증 실패 메시지 추출.
+     * 필드 단위 제약(@NotNull 등)은 FieldError로, 클래스 단위 제약은 필드 없는 ObjectError로 잡히므로 둘 다 처리
+     */
+    private String resolveValidationMessage(BindingResult bindingResult) {
+        FieldError fieldError = bindingResult.getFieldError();
+        if (fieldError != null && fieldError.getDefaultMessage() != null) {
+            return fieldError.getDefaultMessage(); // 어떤 필드가 잘못됐는지 알 수 있는 메시지 우선
+        }
+
+        return bindingResult.getAllErrors().stream()
+                .map(ObjectError::getDefaultMessage)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(CommonErrorCode.INVALID_INPUT_VALUE.getMessage()); // 메시지가 없으면 기본 문구
     }
 
     /**

@@ -11,9 +11,11 @@ import com.youthexpedition.azit.modules.crew.application.port.in.dto.CheckInStat
 import com.youthexpedition.azit.modules.crew.application.port.in.dto.CrewScheduleListResponse;
 import com.youthexpedition.azit.modules.member.adapter.in.web.docs.MemberControllerDocs;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.AgreeToTermsRequest;
+import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateOptionalTermsRequest;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateMemberProfileRequest;
 import com.youthexpedition.azit.modules.member.application.port.in.MemberUseCase;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyAttendanceLogResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyAttendanceMonthlyListResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
@@ -109,6 +111,20 @@ public class MemberController implements MemberControllerDocs {
     @GetMapping("/me/providers")
     public CommonResponse<LinkedProviderResponse> getLinkedProviders(@CurrentMemberId Long memberId) {
         LinkedProviderResponse response = memberUseCase.getLinkedProviders(memberId);
+
+        return CommonResponse.of(CommonSuccessCode.SUCCESS, response);
+    }
+
+    @GetMapping("/me/terms/optional")
+    public CommonResponse<OptionalTermsResponse> getOptionalTerms(@CurrentMemberId Long memberId) {
+        OptionalTermsResponse response = memberUseCase.getOptionalTerms(memberId);
+
+        return CommonResponse.of(CommonSuccessCode.SUCCESS, response);
+    }
+
+    @PatchMapping("/me/terms/optional")
+    public CommonResponse<OptionalTermsResponse> updateOptionalTerms(@CurrentMemberId Long memberId, @Valid @RequestBody UpdateOptionalTermsRequest request) {
+        OptionalTermsResponse response = memberUseCase.updateOptionalTerms(memberId, request.toCommand());
 
         return CommonResponse.of(CommonSuccessCode.SUCCESS, response);
     }

@@ -17,6 +17,7 @@ import com.youthexpedition.azit.modules.member.application.port.in.command.Updat
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
+import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberTermsConsentPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadTermsVersionPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberSocialAccountPort;
@@ -26,6 +27,9 @@ import com.youthexpedition.azit.modules.member.domain.model.Member;
 import com.youthexpedition.azit.modules.member.domain.model.MemberSocialAccount;
 import com.youthexpedition.azit.modules.member.fixture.MemberFixture;
 import com.youthexpedition.azit.modules.member.fixture.MemberSocialAccountFixture;
+import com.youthexpedition.azit.modules.member.fixture.TermsVersionFixture;
+import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateOptionalTermsCommand;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
@@ -82,6 +86,8 @@ class MemberServiceTest {
     private ImageUpdateUtil imageUpdateUtil;
     @Mock
     private LoadTermsVersionPort loadTermsVersionPort;
+    @Mock
+    private LoadMemberTermsConsentPort loadMemberTermsConsentPort;
     @Mock
     private SaveMemberTermsConsentPort saveMemberTermsConsentPort;
 
@@ -409,14 +415,7 @@ class MemberServiceTest {
         private final Long memberId = 1L;
         private final Member member = Member.create("nickname", "test@example.com", "imageUrl");
 
-        private final List<TermsVersion> allLatestVersions = List.of(
-                termsVersion(1L, TermsType.SERVICE, true),
-                termsVersion(2L, TermsType.PRIVACY, true),
-                termsVersion(3L, TermsType.LOCATION, true),
-                termsVersion(4L, TermsType.THIRD_PARTY, true),
-                termsVersion(5L, TermsType.MARKETING, false),
-                termsVersion(6L, TermsType.NOTIFICATION, false)
-        );
+        private final List<TermsVersion> allLatestVersions = TermsVersionFixture.allLatest();
 
         @Test
         @DisplayName("성공 - 선택 약관 포함 전체 동의")
@@ -525,17 +524,6 @@ class MemberServiceTest {
             verify(saveMemberPort, never()).save(any(Member.class));
             verify(loadTermsVersionPort, never()).findAllLatest();
             verify(saveMemberTermsConsentPort, never()).saveAll(any());
-        }
-
-        private TermsVersion termsVersion(Long id, TermsType type, boolean isRequired) {
-            return TermsVersion.builder()
-                    .id(id)
-                    .termsType(type)
-                    .version("1.0")
-                    .isRequired(isRequired)
-                    .effectiveAt(LocalDateTime.of(2024, 1, 1, 0, 0))
-                    .createdAt(LocalDateTime.of(2024, 1, 1, 0, 0))
-                    .build();
         }
     }
 
@@ -880,6 +868,180 @@ class MemberServiceTest {
             assertThat(result).hasSize(2);
             assertThat(result.get(0).memberStatus()).isEqualTo(CrewMemberStatus.JOINED);
             assertThat(result.get(1).memberStatus()).isEqualTo(CrewMemberStatus.REQUESTED);
+        }
+    }
+
+    @Nested
+    @DisplayName("선택 약관 동의 변경")
+    class OptionalTerms {
+
+        private static final Long MARKETING_VERSION_ID = TermsVersionFixture.MARKETING_VERSION_ID;
+
+        private final Long memberId = 1L;
+        private final Member member = MemberFixture.activeMember(memberId);
+
+        private final List<TermsVersion> allLatestVersions = TermsVersionFixture.allLatest();
+
+        @Test
+        @DisplayName("성공 - 마케팅만 동의로 변경하면 알림 동의는 그대로 유지된다")
+        void updateOptionalTerms_success_updatesMarketingOnly() {
+            // given - 알림은 이미 동의한 상태
+            member.updateNotificationConsent(true, LocalDateTime.of(2026, 8, 1, 10, 0));
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(allLatestVersions).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+
+            // when
+            OptionalTermsResponse response = memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(true, null));
+
+            // then - 마케팅만 신규 동의 저장, 이력도 1건만
+            verify(saveMemberTermsConsentPort, times(1)).saveAll(argThat(consents ->
+                    consents.size() == 1 && consents.get(0).getTermsVersionId().equals(MARKETING_VERSION_ID)
+            ));
+            verify(saveMemberTermsConsentPort, times(1)).saveAllHistory(argThat(histories ->
+                    histories.size() == 1 && histories.get(0).getTermsVersionId().equals(MARKETING_VERSION_ID)
+            ));
+            verify(saveMemberPort, times(1)).save(member);
+            assertTrue(member.isMarketingTermsAgreed());
+            assertTrue(member.isNotificationAgreed()); // 건드리지 않은 항목은 유지
+            assertTrue(response.marketing().agreed());
+            assertTrue(response.notification().agreed());
+        }
+
+        @Test
+        @DisplayName("성공 - 두 항목을 한 번에 변경한다")
+        void updateOptionalTerms_success_updatesBothTerms() {
+            // given
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(allLatestVersions).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+
+            // when
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(true, true));
+
+            // then - 약관별로 각각 저장된다
+            verify(saveMemberTermsConsentPort, times(2)).saveAll(anyList());
+            verify(saveMemberTermsConsentPort, times(2)).saveAllHistory(anyList());
+            assertTrue(member.isMarketingTermsAgreed());
+            assertTrue(member.isNotificationAgreed());
+        }
+
+        @Test
+        @DisplayName("성공 - 이미 동의한 항목을 다시 동의하면 동의 시점만 갱신된다")
+        void updateOptionalTerms_success_updatesAgreedAt_whenAlreadyConsented() {
+            // given
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(allLatestVersions).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of(MARKETING_VERSION_ID)).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+
+            // when
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(true, null));
+
+            // then
+            verify(saveMemberTermsConsentPort, times(1)).updateAgreedAt(eq(memberId), eq(Set.of(MARKETING_VERSION_ID)), any(LocalDateTime.class));
+            verify(saveMemberTermsConsentPort, never()).saveAll(anyList());
+            verify(saveMemberTermsConsentPort, never()).deleteByMemberIdAndVersionIds(anyLong(), anySet());
+        }
+
+        @Test
+        @DisplayName("성공 - 거부로 변경하면 동의가 삭제되고 동의 시점이 비워진다")
+        void updateOptionalTerms_success_deletesConsent_whenDisagreed() {
+            // given
+            member.updateMarketingConsent(true, LocalDateTime.now());
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(allLatestVersions).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of(MARKETING_VERSION_ID)).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+
+            // when
+            OptionalTermsResponse response = memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(false, null));
+
+            // then
+            verify(saveMemberTermsConsentPort, times(1)).deleteByMemberIdAndVersionIds(memberId, Set.of(MARKETING_VERSION_ID));
+            verify(saveMemberTermsConsentPort, never()).saveAll(anyList());
+            verify(saveMemberTermsConsentPort, times(1)).saveAllHistory(argThat(histories ->
+                    histories.size() == 1 && !histories.get(0).isAgreed() // 거부 이력도 남긴다
+            ));
+            assertFalse(member.isMarketingTermsAgreed());
+            assertNull(member.getMarketingTermsAgreedAt());
+            assertFalse(response.marketing().agreed());
+        }
+
+        @Test
+        @DisplayName("성공 - 동의한 적 없는 항목을 거부하면 삭제 없이 이력만 남는다")
+        void updateOptionalTerms_success_savesHistoryOnly_whenDisagreedWithoutConsent() {
+            // given
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(allLatestVersions).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+
+            // when
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(false, null));
+
+            // then
+            verify(saveMemberTermsConsentPort, never()).deleteByMemberIdAndVersionIds(anyLong(), anySet());
+            verify(saveMemberTermsConsentPort, never()).saveAll(anyList());
+            verify(saveMemberTermsConsentPort, times(1)).saveAllHistory(anyList());
+        }
+
+        @Test
+        @DisplayName("실패 - 해당 선택 약관 버전이 없으면 예외 발생")
+        void updateOptionalTerms_throwsException_whenTermsVersionNotFound() {
+            // given - 최신 약관 목록에 MARKETING 종류가 없는 경우
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(List.of(TermsVersionFixture.termsVersion(TermsVersionFixture.SERVICE_VERSION_ID, TermsType.SERVICE, true)))
+                    .when(loadTermsVersionPort).findAllLatest();
+
+            // when & then
+            BusinessException exception = assertThrows(BusinessException.class, () ->
+                    memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(true, null))
+            );
+
+            assertEquals(MemberErrorCode.TERMS_VERSION_NOT_FOUND.getCode(), exception.getErrorCode().getCode());
+            verify(saveMemberPort, never()).save(any(Member.class));
+        }
+
+        @Test
+        @DisplayName("실패 - 탈퇴한 회원은 변경 불가")
+        void updateOptionalTerms_throwsException_whenMemberAlreadyWithdrawn() {
+            // given
+            Member withdrawnMember = MemberFixture.activeMember(memberId);
+            withdrawnMember.withdraw(LocalDateTime.now());
+            doReturn(Optional.of(withdrawnMember)).when(loadMemberPort).findById(memberId);
+
+            // when & then
+            BusinessException exception = assertThrows(BusinessException.class, () ->
+                    memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(true, null))
+            );
+
+            assertEquals(MemberErrorCode.MEMBER_ALREADY_WITHDRAWN.getCode(), exception.getErrorCode().getCode());
+            verify(saveMemberPort, never()).save(any(Member.class));
+            verify(saveMemberTermsConsentPort, never()).saveAllHistory(anyList());
+        }
+
+        @Test
+        @DisplayName("성공 - 조회 시 항목별 마지막 변경 날짜를 함께 반환")
+        void getOptionalTerms_success_returnsLatestChangedDate() {
+            // given
+            LocalDateTime marketingChangedAt = LocalDateTime.of(2025, 3, 23, 10, 0);
+            member.updateMarketingConsent(true, marketingChangedAt);
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(Optional.of(MemberTermsConsentHistory.builder()
+                    .memberId(memberId)
+                    .termsVersionId(MARKETING_VERSION_ID)
+                    .isAgreed(true)
+                    .createdAt(marketingChangedAt)
+                    .build()))
+                    .when(loadMemberTermsConsentPort).findLatestHistory(memberId, TermsType.MARKETING);
+            doReturn(Optional.empty()).when(loadMemberTermsConsentPort).findLatestHistory(memberId, TermsType.NOTIFICATION);
+
+            // when
+            OptionalTermsResponse response = memberService.getOptionalTerms(memberId);
+
+            // then
+            assertTrue(response.marketing().agreed());
+            assertEquals(marketingChangedAt, response.marketing().changedAt());
+            assertFalse(response.notification().agreed());
+            assertNull(response.notification().changedAt()); // 변경 이력이 없으면 null
         }
     }
 }

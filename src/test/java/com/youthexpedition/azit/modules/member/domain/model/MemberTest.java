@@ -128,4 +128,56 @@ class MemberTest {
         // then
         assertThat(member.getStatus()).isEqualTo(MemberStatus.PENDING_TERMS);
     }
+
+    @Test
+    @DisplayName("성공: 마케팅 정보 수신에 동의하면 동의 시점이 기록된다.")
+    void updateMarketingConsent_success_whenAgreed() {
+        // given
+        Member member = Member.create("nickname", "test@example.com", "imageUrl");
+        LocalDateTime now = LocalDateTime.of(2026, 8, 18, 10, 0);
+
+        // when
+        member.updateMarketingConsent(true, now);
+
+        // then
+        assertThat(member.isMarketingTermsAgreed()).isTrue();
+        assertThat(member.getMarketingTermsAgreedAt()).isEqualTo(now);
+    }
+
+    @Test
+    @DisplayName("성공: 마케팅 정보 수신을 거부하면 동의 시점이 비워진다.")
+    void updateMarketingConsent_success_whenDisagreed() {
+        // given - 이미 동의한 회원
+        Member member = Member.create("nickname", "test@example.com", "imageUrl");
+        member.updateMarketingConsent(true, LocalDateTime.of(2026, 8, 18, 10, 0));
+
+        // when
+        member.updateMarketingConsent(false, LocalDateTime.of(2026, 8, 19, 10, 0));
+
+        // then
+        assertThat(member.isMarketingTermsAgreed()).isFalse();
+        assertThat(member.getMarketingTermsAgreedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("성공: 알림 수신에 동의하면 동의 시점이 기록되고, 거부하면 비워진다.")
+    void updateNotificationConsent_success() {
+        // given
+        Member member = Member.create("nickname", "test@example.com", "imageUrl");
+        LocalDateTime now = LocalDateTime.of(2026, 8, 18, 10, 0);
+
+        // when
+        member.updateNotificationConsent(true, now);
+
+        // then
+        assertThat(member.isNotificationAgreed()).isTrue();
+        assertThat(member.getNotificationAgreedAt()).isEqualTo(now);
+
+        // when - 거부로 변경
+        member.updateNotificationConsent(false, now.plusDays(1));
+
+        // then
+        assertThat(member.isNotificationAgreed()).isFalse();
+        assertThat(member.getNotificationAgreedAt()).isNull();
+    }
 }

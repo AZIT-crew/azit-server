@@ -15,10 +15,14 @@ import com.youthexpedition.azit.modules.member.application.port.in.MemberUseCase
 import com.youthexpedition.azit.infrastructure.common.util.image.ImageUpdateUtil;
 import com.youthexpedition.azit.modules.member.application.port.in.command.AgreeToTermsCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateMemberProfileCommand;
+import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateOptionalTermsCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse.OptionalTermsItem;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyInfoResponse;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberPort;
+import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberTermsConsentPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberSocialAccountPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadTermsVersionPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberPort;
@@ -33,6 +37,7 @@ import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHi
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
 import com.youthexpedition.azit.modules.member.domain.model.enums.MemberErrorCode;
 import com.youthexpedition.azit.modules.member.domain.model.enums.SocialProvider;
+import com.youthexpedition.azit.modules.member.domain.model.enums.TermsType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -61,6 +66,7 @@ public class MemberService implements MemberUseCase {
     private final MemberResponseMapper memberResponseMapper;
     private final ImageUpdateUtil imageUpdateUtil;
     private final LoadTermsVersionPort loadTermsVersionPort;
+    private final LoadMemberTermsConsentPort loadMemberTermsConsentPort;
     private final SaveMemberTermsConsentPort saveMemberTermsConsentPort;
 
     private static final String BLACKLIST_REASON_WITHDRAWN = "withdrawn";
@@ -252,6 +258,83 @@ public class MemberService implements MemberUseCase {
         imageUpdateUtil.update(command.imageUrl(), member.getProfileImageUrl(), memberId, true, member::updateProfileImageUrl);
 
         saveMemberPort.save(member);
+    }
+
+    @Override
+    public OptionalTermsResponse getOptionalTerms(Long memberId) {
+        Member member = getMember(memberId);
+        return toOptionalTermsResponse(member);
+    }
+
+    @Override
+    @Transactional
+    public OptionalTermsResponse updateOptionalTerms(Long memberId, UpdateOptionalTermsCommand command) {
+        Member member = getMember(memberId);
+        member.validateNotWithdrawn();
+
+        LocalDateTime now = LocalDateTime.now();
+        Set<Long> consentedVersionIds = loadTermsVersionPort.findConsentedVersionIdsByMemberId(memberId);
+
+        if (command.marketingAgreed() != null) {
+            applyOptionalConsent(member, TermsType.MARKETING, command.marketingAgreed(), consentedVersionIds, now);
+        }
+        if (command.notificationAgreed() != null) {
+            applyOptionalConsent(member, TermsType.NOTIFICATION, command.notificationAgreed(), consentedVersionIds, now);
+        }
+
+        saveMemberPort.save(member);
+
+        return toOptionalTermsResponse(member);
+    }
+
+    // 선택 약관 1종의 동의 상태를 회원/동의/이력에 반영
+    private void applyOptionalConsent(Member member, TermsType termsType, boolean agreed,
+                                      Set<Long> consentedVersionIds, LocalDateTime now) {
+        TermsVersion latestVersion = loadLatestTermsVersion(termsType);
+        Set<Long> versionIds = Set.of(latestVersion.getId());
+        boolean alreadyConsented = consentedVersionIds.contains(latestVersion.getId());
+
+        switch (termsType) {
+            case MARKETING -> member.updateMarketingConsent(agreed, now);
+            case NOTIFICATION -> member.updateNotificationConsent(agreed, now);
+            default -> throw new BusinessException(MemberErrorCode.TERMS_VERSION_NOT_FOUND); // 선택 약관이 아님
+        }
+
+        if (agreed && !alreadyConsented) {
+            saveMemberTermsConsentPort.saveAll(List.of(MemberTermsConsent.agree(member.getId(), latestVersion.getId())));
+        } else if (agreed) {
+            saveMemberTermsConsentPort.updateAgreedAt(member.getId(), versionIds, now); // 재동의: 동의 시점 갱신
+        } else if (alreadyConsented) {
+            saveMemberTermsConsentPort.deleteByMemberIdAndVersionIds(member.getId(), versionIds); // 철회: 현재 상태에서 제거
+        }
+
+        // 동의/철회 여부와 관계없이 이력 저장 (화면에 노출되는 변경 시점의 근거)
+        saveMemberTermsConsentPort.saveAllHistory(
+                List.of(MemberTermsConsentHistory.create(member.getId(), latestVersion.getId(), agreed)));
+
+        log.info("[MEMBER] memberId: {} 의 {} 약관 동의가 {} 로 변경되었습니다.",
+                member.getId(), termsType, agreed ? "동의" : "거부");
+    }
+
+    private TermsVersion loadLatestTermsVersion(TermsType termsType) {
+        return loadTermsVersionPort.findAllLatest().stream()
+                .filter(termsVersion -> termsVersion.getTermsType() == termsType)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(MemberErrorCode.TERMS_VERSION_NOT_FOUND));
+    }
+
+    private OptionalTermsResponse toOptionalTermsResponse(Member member) {
+        return OptionalTermsResponse.of(
+                OptionalTermsItem.of(member.isMarketingTermsAgreed(), findConsentChangedAt(member.getId(), TermsType.MARKETING)),
+                OptionalTermsItem.of(member.isNotificationAgreed(), findConsentChangedAt(member.getId(), TermsType.NOTIFICATION))
+        );
+    }
+
+    // 마지막으로 동의 여부를 변경한 날짜 (이력이 없으면 null)
+    private LocalDateTime findConsentChangedAt(Long memberId, TermsType termsType) {
+        return loadMemberTermsConsentPort.findLatestHistory(memberId, termsType)
+                .map(MemberTermsConsentHistory::getCreatedAt)
+                .orElse(null);
     }
 
     private Member getMember(Long memberId) {
