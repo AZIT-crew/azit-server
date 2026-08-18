@@ -289,10 +289,8 @@ public class MemberService implements MemberUseCase {
         if (command.notificationAgreed() != null) {
             applyOptionalConsent(member, TermsType.NOTIFICATION, command.notificationAgreed(), consentedVersionIds, now);
 
-            // 전체 알림을 켜면 크루별 알림도 모두 켠다. 끌 때는 발송만 막고 크루별 설정은 보존한다
-            if (command.notificationAgreed()) {
-                enableAllCrewNotifications(memberId);
-            }
+            // 전체 알림을 켜고 끄면 크루별 알림도 모두 따라서 on, off
+            applyAllCrewNotifications(memberId, command.notificationAgreed());
         }
 
         saveMemberPort.save(member);
@@ -371,17 +369,28 @@ public class MemberService implements MemberUseCase {
         return memberResponseMapper.toCrewNotificationSettingResponse(joinedCrew, setting);
     }
 
-    // 전체 알림을 켜면 참여 중인 크루의 알림도 모두 켜기
-    private void enableAllCrewNotifications(Long memberId) {
-        List<MemberCrewNotificationSetting> settings = loadMemberCrewNotificationSettingPort.findAllByMemberId(memberId).stream()
-                .filter(setting -> !setting.isAllEnabled())
-                .toList();
+    // 전체 알림 on/off 를 참여 중인 모든 크루의 알림 설정에 반영
+    private void applyAllCrewNotifications(Long memberId, boolean enabled) {
+        Map<Long, MemberCrewNotificationSetting> settingsByCrewId = loadSettingsByCrewId(memberId);
 
-        if (settings.isEmpty()) return;
+        // 설정을 저장한 적 없는 크루는 기본값이 '모두 켜짐'이라, 켤 때는 저장된 설정만 갱신
+        // 끌 때는 기본값이 켜짐이므로 참여 중인 크루 전체를 대상으로 off
+        List<MemberCrewNotificationSetting> targets = enabled
+                ? settingsByCrewId.values().stream()
+                        .filter(setting -> !setting.isAllEnabled())
+                        .toList()
+                : loadCrewMemberPort.findJoinedCrewsByMemberId(memberId).stream()
+                        .map(joinedCrew -> settingsByCrewId.getOrDefault(joinedCrew.crewId(),
+                                MemberCrewNotificationSetting.defaultSetting(memberId, joinedCrew.crewId())))
+                        .filter(setting -> !setting.isAllDisabled())
+                        .toList();
 
-        settings.forEach(setting -> setting.updateAll(true));
-        saveMemberCrewNotificationSettingPort.saveAll(settings);
-        log.info("[MEMBER] memberId: {} 의 전체 알림이 켜져 크루 {}곳의 알림 설정을 모두 켭니다.", memberId, settings.size());
+        if (targets.isEmpty()) return;
+
+        targets.forEach(setting -> setting.updateAll(enabled));
+        saveMemberCrewNotificationSettingPort.saveAll(targets);
+        log.info("[MEMBER] memberId: {} 의 전체 알림이 {}져 크루 {}곳의 알림 설정을 모두 {}니다.",
+                memberId, enabled ? "켜" : "꺼", targets.size(), enabled ? "켭" : "끕");
     }
 
     private Map<Long, MemberCrewNotificationSetting> loadSettingsByCrewId(Long memberId) {

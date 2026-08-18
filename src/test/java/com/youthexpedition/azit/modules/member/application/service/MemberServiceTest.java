@@ -1223,19 +1223,47 @@ class MemberServiceTest {
         }
 
         @Test
-        @DisplayName("성공 - 전체 알림을 끄면 크루별 설정은 그대로 보존된다")
-        void updateOptionalTerms_success_keepsCrewNotifications_whenNotificationTurnedOff() {
-            // given
+        @DisplayName("성공 - 전체 알림을 끄면 켜져 있던 크루 알림도 모두 꺼진다")
+        void updateOptionalTerms_success_disablesAllCrewNotifications_whenNotificationTurnedOff() {
+            // given - 저장된 설정이 있는 크루와, 설정을 저장한 적 없어 기본값(모두 켜짐)인 크루
             Member member = MemberFixture.activeMember(memberId);
+            JoinedCrewDto anotherJoinedCrew = new JoinedCrewDto(20L, "아지트2", "crew2.png", "한줄 소개");
+            MemberCrewNotificationSetting savedSetting = MemberCrewNotificationSetting.defaultSetting(memberId, crewId);
+
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
             doReturn(TermsVersionFixture.allLatest()).when(loadTermsVersionPort).findAllLatest();
             doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+            doReturn(List.of(joinedCrew, anotherJoinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(List.of(savedSetting)).when(loadMemberCrewNotificationSettingPort).findAllByMemberId(memberId);
 
             // when
             memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, false));
 
-            // then - 마스터 스위치를 끈 것이므로 크루별 설정은 건드리지 않는다
-            verify(loadMemberCrewNotificationSettingPort, never()).findAllByMemberId(anyLong());
+            // then - 설정이 없던 크루도 기본값이 켜짐이므로 꺼진 설정을 새로 저장한다
+            verify(saveMemberCrewNotificationSettingPort, times(1)).saveAll(argThat(settings ->
+                    settings.size() == 2 && settings.stream().allMatch(MemberCrewNotificationSetting::isAllDisabled)
+            ));
+            assertThat(savedSetting.isAllDisabled()).isTrue();
+        }
+
+        @Test
+        @DisplayName("성공 - 전체 알림을 꺼도 이미 모두 꺼져 있으면 저장하지 않는다")
+        void updateOptionalTerms_success_skipsSave_whenAllCrewNotificationsAlreadyDisabled() {
+            // given
+            Member member = MemberFixture.activeMember(memberId);
+            MemberCrewNotificationSetting disabledSetting = MemberCrewNotificationSetting.defaultSetting(memberId, crewId);
+            disabledSetting.updateAll(false);
+
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(TermsVersionFixture.allLatest()).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(List.of(disabledSetting)).when(loadMemberCrewNotificationSettingPort).findAllByMemberId(memberId);
+
+            // when
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, false));
+
+            // then
             verify(saveMemberCrewNotificationSettingPort, never()).saveAll(anyList());
         }
     }

@@ -54,6 +54,33 @@ class MemberCrewNotificationSettingTest {
     }
 
     @Test
+    @DisplayName("성공: 하나만 켜져 있으면 모두 꺼진 상태로 판단하지 않는다.")
+    void isAllDisabled_returnsFalse_whenOnlyOneRunTypeDisabled() {
+        // given
+        MemberCrewNotificationSetting setting = MemberCrewNotificationSetting.defaultSetting(MEMBER_ID, CREW_ID);
+
+        // when - 번개런만 끈다
+        setting.update(null, false);
+
+        // then
+        assertThat(setting.isAllDisabled()).isFalse();
+        assertThat(setting.isAllEnabled()).isFalse();
+    }
+
+    @Test
+    @DisplayName("성공: 두 알림을 모두 끄면 모두 꺼진 상태로 판단한다.")
+    void isAllDisabled_returnsTrue_whenBothRunTypesDisabled() {
+        // given
+        MemberCrewNotificationSetting setting = MemberCrewNotificationSetting.defaultSetting(MEMBER_ID, CREW_ID);
+
+        // when
+        setting.updateAll(false);
+
+        // then
+        assertThat(setting.isAllDisabled()).isTrue();
+    }
+
+    @Test
     @DisplayName("성공: 두 알림을 모두 다시 켜면 전체알림도 켜진 것으로 판단한다.")
     void isAllEnabled_returnsTrue_whenBothRunTypesEnabled() {
         // given
