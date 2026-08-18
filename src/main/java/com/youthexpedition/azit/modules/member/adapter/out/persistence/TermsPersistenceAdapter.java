@@ -7,22 +7,26 @@ import com.youthexpedition.azit.modules.member.adapter.out.mapper.TermsVersionMa
 import com.youthexpedition.azit.modules.member.adapter.out.persistence.repository.MemberTermsConsentHistoryRepository;
 import com.youthexpedition.azit.modules.member.adapter.out.persistence.repository.MemberTermsConsentRepository;
 import com.youthexpedition.azit.modules.member.adapter.out.persistence.repository.TermsVersionRepository;
+import com.youthexpedition.azit.modules.member.application.port.out.LoadMemberTermsConsentPort;
 import com.youthexpedition.azit.modules.member.application.port.out.LoadTermsVersionPort;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberTermsConsentPort;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsent;
 import com.youthexpedition.azit.modules.member.domain.model.MemberTermsConsentHistory;
 import com.youthexpedition.azit.modules.member.domain.model.TermsVersion;
+import com.youthexpedition.azit.modules.member.domain.model.enums.TermsType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
-public class TermsPersistenceAdapter implements LoadTermsVersionPort, SaveMemberTermsConsentPort {
+public class TermsPersistenceAdapter implements LoadTermsVersionPort, SaveMemberTermsConsentPort, LoadMemberTermsConsentPort {
 
     private final TermsVersionRepository termsVersionRepository;
     private final MemberTermsConsentRepository memberTermsConsentRepository;
@@ -44,6 +48,14 @@ public class TermsPersistenceAdapter implements LoadTermsVersionPort, SaveMember
     @Override
     public Set<Long> findConsentedVersionIdsByMemberId(Long memberId) {
         return memberTermsConsentRepository.findTermsVersionIdsByMemberId(memberId);
+    }
+
+    @Override
+    public Optional<MemberTermsConsentHistory> findLatestHistory(Long memberId, TermsType termsType) {
+        return memberTermsConsentHistoryRepository
+                .findLatestByMemberIdAndTermsType(memberId, termsType, Pageable.ofSize(1)).stream()
+                .findFirst()
+                .map(memberTermsConsentHistoryMapper::toDomain);
     }
 
     @Override

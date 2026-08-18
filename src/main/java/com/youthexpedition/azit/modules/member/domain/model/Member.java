@@ -61,6 +61,18 @@ public class Member {
         this.status = MemberStatus.ACTIVE;
     }
 
+    // 마케팅 정보 수신 동의 변경 (거부 시 동의 시점은 null로 설정)
+    public void updateMarketingConsent(boolean agreed, LocalDateTime now) {
+        this.isMarketingTermsAgreed = agreed;
+        this.marketingTermsAgreedAt = agreed ? now : null;
+    }
+
+    // 알림 수신 동의 변경 (거부 시 동의 시점은 null로 설정)
+    public void updateNotificationConsent(boolean agreed, LocalDateTime now) {
+        this.isNotificationAgreed = agreed;
+        this.notificationAgreedAt = agreed ? now : null;
+    }
+
     // 탈퇴(유예기간 중) 또는 파기 완료 상태인지 확인
     public boolean isWithdrawn() {
         return this.status == MemberStatus.WITHDRAWN || this.status == MemberStatus.DELETED;
