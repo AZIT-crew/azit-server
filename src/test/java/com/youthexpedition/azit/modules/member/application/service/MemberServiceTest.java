@@ -1272,23 +1272,22 @@ class MemberServiceTest {
         @Test
         @DisplayName("성공 - 전체 알림을 꺼도 크루별 알림 설정은 그대로 보존된다")
         void updateOptionalTerms_success_keepsCrewNotifications_whenNotificationTurnedOff() {
-            // given - 정기런만 꺼둔 크루가 있는 회원
+            // given - 알림 약관에 동의한 회원
             Member member = MemberFixture.activeMember(memberId);
-            MemberCrewNotificationSetting savedSetting = MemberCrewNotificationSetting.defaultSetting(memberId, crewId);
-            savedSetting.update(false, null);
+            member.updateNotificationConsent(true, LocalDateTime.of(2026, 8, 1, 10, 0));
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
             doReturn(TermsVersionFixture.allLatest()).when(loadTermsVersionPort).findAllLatest();
-            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+            doReturn(Set.of(TermsVersionFixture.NOTIFICATION_VERSION_ID))
+                    .when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
 
             // when
             memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, false));
 
-            // then - 마스터 스위치를 끈 것이므로 크루별 설정은 조회도 저장도 하지 않는다
+            // then - 마스터 스위치를 끈 것이므로 크루별 설정은 조회도 저장도 하지 않는다 (값이 그대로 남는다)
             verify(loadMemberCrewNotificationSettingPort, never()).findAllByMemberId(anyLong());
             verify(saveMemberCrewNotificationSettingPort, never()).saveAll(anyList());
-            assertThat(savedSetting.isRegularRunEnabled()).isFalse(); // 꺼둔 설정 그대로
-            assertThat(savedSetting.isLightningRunEnabled()).isTrue();
+            verify(saveMemberCrewNotificationSettingPort, never()).save(any());
             assertFalse(member.isNotificationAgreed()); // 약관 동의는 철회된다
         }
 
