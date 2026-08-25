@@ -453,6 +453,9 @@ public class MemberService implements MemberUseCase {
             }
         });
         saveCrewMemberPort.saveAll(crewMembers);
+
+        // 모든 크루에서 나가므로 알림 설정도 삭제한다
+        saveMemberCrewNotificationSettingPort.deleteByMemberId(memberId);
     }
 
     // 본인이 리더인 크루가 있으면 앱 탈퇴 불가

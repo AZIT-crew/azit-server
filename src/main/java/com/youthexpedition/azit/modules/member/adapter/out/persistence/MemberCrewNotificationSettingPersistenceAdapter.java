@@ -39,6 +39,21 @@ public class MemberCrewNotificationSettingPersistenceAdapter
     }
 
     @Override
+    public void deleteByMemberIdAndCrewId(Long memberId, Long crewId) {
+        memberCrewNotificationSettingRepository.deleteByMemberIdAndCrewId(memberId, crewId);
+    }
+
+    @Override
+    public void deleteByCrewId(Long crewId) {
+        memberCrewNotificationSettingRepository.deleteByCrewId(crewId);
+    }
+
+    @Override
+    public void deleteByMemberId(Long memberId) {
+        memberCrewNotificationSettingRepository.deleteByMemberId(memberId);
+    }
+
+    @Override
     public void saveAll(List<MemberCrewNotificationSetting> settings) {
         List<MemberCrewNotificationSettingEntity> entities = settings.stream()
                 .map(memberCrewNotificationSettingMapper::toEntity)

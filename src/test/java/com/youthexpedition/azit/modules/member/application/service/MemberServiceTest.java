@@ -184,6 +184,28 @@ class MemberServiceTest {
         }
 
         @Test
+        @DisplayName("성공 - 서비스 탈퇴 시 크루별 알림 설정도 삭제된다")
+        void withdraw_success_deletesCrewNotificationSettings() {
+            // given
+            CrewMember joinedCrewMember = CrewMember.builder()
+                    .crewId(10L)
+                    .memberId(memberId)
+                    .role(CrewMemberRole.MEMBER)
+                    .status(CrewMemberStatus.JOINED)
+                    .build();
+
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(List.of(joinedCrewMember)).when(loadCrewMemberPort).findAllActiveByMemberId(memberId);
+            doReturn(member).when(saveMemberPort).save(any(Member.class));
+
+            // when
+            memberService.withdraw(memberId, accessToken);
+
+            // then
+            verify(saveMemberCrewNotificationSettingPort, times(1)).deleteByMemberId(memberId);
+        }
+
+        @Test
         @DisplayName("실패 - 회원을 찾을 수 없음")
         void withdraw_fail_memberNotFound() {
             // given

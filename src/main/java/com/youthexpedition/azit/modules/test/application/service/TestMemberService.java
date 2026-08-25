@@ -37,6 +37,7 @@ public class TestMemberService implements TestMemberUseCase {
     private final SaveCrewPort saveCrewPort;
     private final SaveCrewScheduleMemberPort saveCrewScheduleMemberPort;
     private final SaveCrewMemberPort saveCrewMemberPort;
+    private final SaveMemberCrewNotificationSettingPort saveMemberCrewNotificationSettingPort;
     private final SavePointHistoryPort savePointHistoryPort;
     private final SaveCartItemPort saveCartItemPort;
     private final SaveDeliveryAddressPort saveDeliveryAddressPort;
@@ -58,6 +59,9 @@ public class TestMemberService implements TestMemberUseCase {
 
         // crew_schedule_member 완전 삭제
         saveCrewScheduleMemberPort.deleteByMemberId(memberId);
+
+        // member_crew_notification_setting 완전 삭제
+        saveMemberCrewNotificationSettingPort.deleteByMemberId(memberId);
 
         // crew_member 완전 삭제
         saveCrewMemberPort.deleteByMemberId(memberId);
