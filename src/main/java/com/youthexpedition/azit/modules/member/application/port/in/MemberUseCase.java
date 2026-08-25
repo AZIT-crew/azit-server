@@ -2,7 +2,9 @@ package com.youthexpedition.azit.modules.member.application.port.in;
 
 import com.youthexpedition.azit.modules.member.application.port.in.command.AgreeToTermsCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateMemberProfileCommand;
+import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateCrewNotificationSettingCommand;
 import com.youthexpedition.azit.modules.member.application.port.in.command.UpdateOptionalTermsCommand;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.CrewNotificationSettingResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyCrewResponse;
@@ -21,5 +23,7 @@ public interface MemberUseCase {
     void updateMemberProfile(Long memberId, UpdateMemberProfileCommand command);
     OptionalTermsResponse getOptionalTerms(Long memberId);
     OptionalTermsResponse updateOptionalTerms(Long memberId, UpdateOptionalTermsCommand command);
+    List<CrewNotificationSettingResponse> getCrewNotificationSettings(Long memberId);
+    CrewNotificationSettingResponse updateCrewNotificationSetting(Long memberId, Long crewId, UpdateCrewNotificationSettingCommand command);
     LinkedProviderResponse getLinkedProviders(Long memberId);
 }

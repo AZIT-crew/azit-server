@@ -30,6 +30,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.youthexpedition.azit.modules.crew.application.port.in.CrewScheduleUseCase;
+import com.youthexpedition.azit.modules.crew.application.port.out.LoadCrewSchedulePort;
+import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewStatus;
+import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberCrewNotificationSettingPort;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -58,6 +62,12 @@ class CrewServiceTest {
     private CrewResponseMapper crewResponseMapper;
     @Mock
     private CrewImageProvider crewImageProvider;
+    @Mock
+    private CrewScheduleUseCase crewScheduleUseCase;
+    @Mock
+    private LoadCrewSchedulePort loadCrewSchedulePort;
+    @Mock
+    private SaveMemberCrewNotificationSettingPort saveMemberCrewNotificationSettingPort;
     @InjectMocks
     private CrewService crewService;
 
@@ -659,6 +669,80 @@ class CrewServiceTest {
 
             // then
             assertThat(result).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("크루 이탈 시 알림 설정 초기화")
+    class ResetCrewNotificationSetting {
+
+        private static final Long CREW_ID = 100L;
+        private static final Long LEADER_ID = 1L;
+        private static final Long MEMBER_ID = 2L;
+
+        @Test
+        @DisplayName("성공: 자진 탈퇴하면 해당 크루의 알림 설정이 삭제된다.")
+        void exitCrew_success_deletesNotificationSetting() {
+            // given
+            given(loadCrewMemberPort.findByCrewIdAndMemberId(CREW_ID, MEMBER_ID))
+                    .willReturn(Optional.of(crewMember(MEMBER_ID, CrewMemberRole.MEMBER)));
+
+            // when
+            crewService.exitCrew(CREW_ID, MEMBER_ID);
+
+            // then - 재가입 시 기본값(모두 켜짐)으로 시작하도록 행을 지운다
+            verify(saveMemberCrewNotificationSettingPort, times(1)).deleteByMemberIdAndCrewId(MEMBER_ID, CREW_ID);
+        }
+
+        @Test
+        @DisplayName("성공: 방출되면 방출된 멤버의 알림 설정이 삭제된다.")
+        void expelCrewMember_success_deletesNotificationSetting() {
+            // given
+            given(loadCrewMemberPort.findByCrewIdAndMemberId(CREW_ID, LEADER_ID))
+                    .willReturn(Optional.of(crewMember(LEADER_ID, CrewMemberRole.LEADER)));
+            given(loadCrewMemberPort.findByCrewIdAndMemberId(CREW_ID, MEMBER_ID))
+                    .willReturn(Optional.of(crewMember(MEMBER_ID, CrewMemberRole.MEMBER)));
+
+            // when
+            crewService.expelCrewMember(CREW_ID, LEADER_ID, MEMBER_ID);
+
+            // then
+            verify(saveMemberCrewNotificationSettingPort, times(1)).deleteByMemberIdAndCrewId(MEMBER_ID, CREW_ID);
+        }
+
+        @Test
+        @DisplayName("성공: 크루가 해산되면 해당 크루의 알림 설정이 일괄 삭제된다.")
+        void dissolveCrew_success_deletesAllNotificationSettings() {
+            // given
+            Crew crew = Crew.builder()
+                    .id(CREW_ID)
+                    .name("러닝크루")
+                    .memberCount(2)
+                    .status(CrewStatus.ACTIVE)
+                    .build();
+            given(loadCrewPort.findById(CREW_ID)).willReturn(Optional.of(crew));
+            given(loadCrewMemberPort.findByCrewIdAndMemberId(CREW_ID, LEADER_ID))
+                    .willReturn(Optional.of(crewMember(LEADER_ID, CrewMemberRole.LEADER)));
+            given(loadCrewSchedulePort.findActiveSchedulesByCrewId(eq(CREW_ID), any(LocalDateTime.class)))
+                    .willReturn(List.of());
+            given(loadCrewMemberPort.findAllActiveByCrewId(CREW_ID))
+                    .willReturn(List.of(crewMember(LEADER_ID, CrewMemberRole.LEADER), crewMember(MEMBER_ID, CrewMemberRole.MEMBER)));
+
+            // when
+            crewService.dissolveCrew(CREW_ID, LEADER_ID);
+
+            // then
+            verify(saveMemberCrewNotificationSettingPort, times(1)).deleteByCrewId(CREW_ID);
+            verify(saveMemberCrewNotificationSettingPort, never()).deleteByMemberIdAndCrewId(anyLong(), anyLong());
+        }
+
+        private CrewMember crewMember(Long memberId, CrewMemberRole role) {
+            return CrewMember.builder()
+                    .crewId(CREW_ID)
+                    .memberId(memberId)
+                    .role(role)
+                    .status(CrewMemberStatus.JOINED)
+                    .build();
         }
     }
 

@@ -11,9 +11,11 @@ import com.youthexpedition.azit.modules.crew.application.port.in.dto.CheckInStat
 import com.youthexpedition.azit.modules.crew.application.port.in.dto.CrewScheduleListResponse;
 import com.youthexpedition.azit.modules.member.adapter.in.web.docs.MemberControllerDocs;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.AgreeToTermsRequest;
+import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateCrewNotificationSettingRequest;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateOptionalTermsRequest;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateMemberProfileRequest;
 import com.youthexpedition.azit.modules.member.application.port.in.MemberUseCase;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.CrewNotificationSettingResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyAttendanceLogResponse;
@@ -125,6 +127,22 @@ public class MemberController implements MemberControllerDocs {
     @PatchMapping("/me/terms/optional")
     public CommonResponse<OptionalTermsResponse> updateOptionalTerms(@CurrentMemberId Long memberId, @Valid @RequestBody UpdateOptionalTermsRequest request) {
         OptionalTermsResponse response = memberUseCase.updateOptionalTerms(memberId, request.toCommand());
+
+        return CommonResponse.of(CommonSuccessCode.SUCCESS, response);
+    }
+
+    @GetMapping("/me/crews/notifications")
+    public CommonResponse<List<CrewNotificationSettingResponse>> getCrewNotificationSettings(@CurrentMemberId Long memberId) {
+        List<CrewNotificationSettingResponse> response = memberUseCase.getCrewNotificationSettings(memberId);
+
+        return CommonResponse.of(CommonSuccessCode.SUCCESS, response);
+    }
+
+    @PatchMapping("/me/crews/{crewId}/notifications")
+    public CommonResponse<CrewNotificationSettingResponse> updateCrewNotificationSetting(
+            @CurrentMemberId Long memberId, @PathVariable Long crewId,
+            @Valid @RequestBody UpdateCrewNotificationSettingRequest request) {
+        CrewNotificationSettingResponse response = memberUseCase.updateCrewNotificationSetting(memberId, crewId, request.toCommand());
 
         return CommonResponse.of(CommonSuccessCode.SUCCESS, response);
     }

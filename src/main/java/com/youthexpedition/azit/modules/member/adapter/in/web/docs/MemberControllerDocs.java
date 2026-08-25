@@ -8,8 +8,10 @@ import com.youthexpedition.azit.modules.crew.adapter.in.web.dto.CheckInRequest;
 import com.youthexpedition.azit.modules.crew.application.port.in.dto.CheckInStatusResponse;
 import com.youthexpedition.azit.modules.crew.application.port.in.dto.CrewScheduleListResponse;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.AgreeToTermsRequest;
+import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateCrewNotificationSettingRequest;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateOptionalTermsRequest;
 import com.youthexpedition.azit.modules.member.adapter.in.web.dto.UpdateMemberProfileRequest;
+import com.youthexpedition.azit.modules.member.application.port.in.dto.CrewNotificationSettingResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.LinkedProviderResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.OptionalTermsResponse;
 import com.youthexpedition.azit.modules.member.application.port.in.dto.MyAttendanceLogResponse;
@@ -215,6 +217,47 @@ public interface MemberControllerDocs {
     );
 
     @Operation(
+            summary = "크루별 알림 설정 조회",
+            description = """
+            '크루별 알림 설정' 화면에 필요한, 참여 중인 크루(JOINED) 목록과 크루별 알림 설정을 반환합니다. <br><br>
+
+            **[참고 사항]** <br>
+            * 알림 설정을 한 번도 변경하지 않은 크루는 모두 켜진 상태(true)로 세팅됩니다. <br>
+            * 크루를 나가거나 방출되면 해당 크루의 알림 설정은 삭제되므로, 재가입 시 모두 켜진 상태로 초기화됩니다. <br>
+            * 참여 중인 크루가 없으면 빈 배열을 반환합니다. <br>
+            """
+    )
+    @ApiErrorCodeExamples({
+            "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
+    })
+    CommonResponse<List<CrewNotificationSettingResponse>> getCrewNotificationSettings(@Parameter(hidden = true) @CurrentMemberId Long memberId);
+
+    @Operation(
+            summary = "크루별 알림 설정 변경",
+            description = """
+            특정 크루의 알림 설정을 변경합니다. **부분 갱신**이라 바꿀 항목만 담아 보내면 됩니다. <br><br>
+
+            **[요청 방식]** <br>
+            * 크루 '전체알림' 토글: { "allEnabled": false } → 정기런·번개런이 한 번에 변경됩니다. <br>
+            * 개별 토글: { "regularRunEnabled": false } <br>
+            * 두 값을 함께 보내면 allEnabled를 먼저 적용한 뒤 개별 값으로 덮어씁니다. <br><br>
+
+            **[참고 사항]** <br>
+            * 정기런·번개런 중 하나라도 꺼지면 응답의 allEnabled는 false가 됩니다. <br>
+            * 세 항목이 모두 null이면 변경할 대상이 없으므로 거부됩니다. (INVALID_INPUT_VALUE) <br>
+            * 가입 완료(JOINED) 상태인 크루만 설정할 수 있습니다. (NOT_A_CREW_MEMBER)
+            """
+    )
+    @ApiErrorCodeExamples({
+            "NOT_A_CREW_MEMBER", "INVALID_INPUT_VALUE",
+            "UNAUTHORIZED", "EXPIRED_TOKEN", "INVALID_TOKEN", "TOKEN_REUSE_DETECTED", "BLACKLISTED_TOKEN"
+    })
+    CommonResponse<CrewNotificationSettingResponse> updateCrewNotificationSetting(
+            @Parameter(hidden = true) @CurrentMemberId Long memberId,
+            @Parameter(description = "크루 ID") Long crewId,
+            @Valid @RequestBody UpdateCrewNotificationSettingRequest request);
+
+    @Operation(
             summary = "프로필 수정",
             description = """
                     사용자의 프로필 정보를 수정합니다. <br><br>
@@ -284,10 +327,10 @@ public interface MemberControllerDocs {
             * 부분 갱신입니다. 변경할 항목만 담아 보내고, 건드리지 않을 항목은 null로 두거나 생략하세요. <br>
             * 예) 마케팅만 끄기: { "marketingAgreed": false } <br><br>
 
-            **[처리 내용]** <br>
-            * 동의 시 최신 약관 버전에 대한 동의가 저장되고, 이미 동의한 상태라면 동의 시점이 갱신됩니다. <br>
-            * 동의/거부와 관계없이 변경 이력이 저장됩니다. <br>
-            * 같은 값으로 다시 호출해도 오류 없이 변경 시점만 갱신됩니다. <br><br>
+            **[전체 알림(notificationAgreed)과 크루별 알림의 관계]** <br>
+            * notificationAgreed=true: 참여 중인 모든 크루의 알림이 함께 켜집니다. <br>
+            * notificationAgreed=false: 약관 동의만 철회되고 크루별 설정은 그대로 보존됩니다.<br>
+            * 반대로 크루별 알림을 모두 끄거나 켜도 전체 알림 값은 바뀌지 않습니다. <br><br>
 
             **[참고 사항]** <br>
             * 두 항목이 모두 null이면 변경할 대상이 없으므로 거부됩니다. (INVALID_INPUT_VALUE) <br>

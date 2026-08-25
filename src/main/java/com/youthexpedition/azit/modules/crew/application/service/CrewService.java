@@ -23,6 +23,7 @@ import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewErrorCode;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberRole;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberStatus;
 import com.youthexpedition.azit.modules.crew.domain.model.provider.CrewImageProvider;
+import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberCrewNotificationSettingPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -52,6 +53,7 @@ public class CrewService implements CrewUseCase {
     private final CrewResponseMapper crewResponseMapper;
     private final CrewImageProvider crewImageProvider;
     private final ImageUpdateUtil imageUpdateUtil;
+    private final SaveMemberCrewNotificationSettingPort saveMemberCrewNotificationSettingPort;
 
     private static final Long MAX_CREW_LIMIT = 3L;
 
@@ -248,6 +250,9 @@ public class CrewService implements CrewUseCase {
         targetMember.expel(LocalDateTime.now());
         saveCrewMemberPort.save(targetMember);
 
+        // 알림 설정 삭제 (재가입 시 기본값으로 초기화)
+        saveMemberCrewNotificationSettingPort.deleteByMemberIdAndCrewId(targetMemberId, crewId);
+
         // 크루 인원 수 1명 감소
         log.info("[CREW] crewId: {} 에서 memberId: {} 가 방출되어 크루 인원 수가 감소합니다.", crewId, targetMemberId);
         saveCrewPort.decrementMemberCount(crewId);
@@ -286,6 +291,9 @@ public class CrewService implements CrewUseCase {
         // 크루 멤버 상태 EXITED 변경
         crewMember.exit(now);
         saveCrewMemberPort.save(crewMember);
+
+        // 알림 설정 삭제 (재가입 시 기본값으로 초기화)
+        saveMemberCrewNotificationSettingPort.deleteByMemberIdAndCrewId(memberId, crewId);
 
         // 크루 인원 수 1명 감소
         log.info("[CREW] crewId: {} 에서 memberId: {} 가 자진 탈퇴하여 크루 인원 수가 감소합니다.", crewId, memberId);
@@ -377,6 +385,9 @@ public class CrewService implements CrewUseCase {
             saveCrewMemberPort.saveAll(activeMembers);
             log.info("[CREW] crewId: {} 해산합니다.", crewId);
         }
+
+        // 해산된 크루의 알림 설정 일괄 삭제
+        saveMemberCrewNotificationSettingPort.deleteByCrewId(crewId);
 
         // 크루 해산
         crew.dissolve(now);
