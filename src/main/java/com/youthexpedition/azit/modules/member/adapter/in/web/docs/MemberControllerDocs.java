@@ -326,10 +326,10 @@ public interface MemberControllerDocs {
             * 부분 갱신입니다. 변경할 항목만 담아 보내고, 건드리지 않을 항목은 null로 두거나 생략하세요. <br>
             * 예) 마케팅만 끄기: { "marketingAgreed": false } <br><br>
 
-            **[처리 내용]** <br>
-            * 동의 시 최신 약관 버전에 대한 동의가 저장되고, 이미 동의한 상태라면 동의 시점이 갱신됩니다. <br>
-            * 동의/거부와 관계없이 변경 이력이 저장됩니다. <br>
-            * 같은 값으로 다시 호출해도 오류 없이 변경 시점만 갱신됩니다. <br><br>
+            **[전체 알림(notificationAgreed)과 크루별 알림의 관계]** <br>
+            * notificationAgreed=true: 참여 중인 모든 크루의 알림이 함께 켜집니다. <br>
+            * notificationAgreed=false: 약관 동의만 철회되고 크루별 설정은 그대로 보존됩니다.<br>
+            * 반대로 크루별 알림을 모두 끄거나 켜도 전체 알림 값은 바뀌지 않습니다. <br><br>
 
             **[참고 사항]** <br>
             * 두 항목이 모두 null이면 변경할 대상이 없으므로 거부됩니다. (INVALID_INPUT_VALUE) <br>

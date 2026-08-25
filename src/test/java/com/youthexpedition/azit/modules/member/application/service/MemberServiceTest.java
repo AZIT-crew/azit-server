@@ -939,9 +939,11 @@ class MemberServiceTest {
         }
 
         @Test
-        @DisplayName("성공 - 이미 동의한 항목을 다시 동의하면 동의 시점만 갱신된다")
-        void updateOptionalTerms_success_updatesAgreedAt_whenAlreadyConsented() {
-            // given
+        @DisplayName("성공 - 이미 동의한 항목을 다시 동의하면 약관 동의 기록을 남기지 않는다")
+        void updateOptionalTerms_success_skipsConsent_whenAlreadyAgreed() {
+            // given - 최신 마케팅 약관에 이미 동의한 회원
+            LocalDateTime agreedAt = LocalDateTime.of(2026, 8, 1, 10, 0);
+            member.updateMarketingConsent(true, agreedAt);
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
             doReturn(allLatestVersions).when(loadTermsVersionPort).findAllLatest();
             doReturn(Set.of(MARKETING_VERSION_ID)).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
@@ -949,10 +951,32 @@ class MemberServiceTest {
             // when
             memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(true, null));
 
-            // then
-            verify(saveMemberTermsConsentPort, times(1)).updateAgreedAt(eq(memberId), eq(Set.of(MARKETING_VERSION_ID)), any(LocalDateTime.class));
+            // then - 동의 시점도 이력도 그대로 둔다
+            verify(saveMemberTermsConsentPort, never()).updateAgreedAt(anyLong(), anySet(), any(LocalDateTime.class));
             verify(saveMemberTermsConsentPort, never()).saveAll(anyList());
+            verify(saveMemberTermsConsentPort, never()).saveAllHistory(anyList());
             verify(saveMemberTermsConsentPort, never()).deleteByMemberIdAndVersionIds(anyLong(), anySet());
+            assertTrue(member.isMarketingTermsAgreed());
+            assertEquals(agreedAt, member.getMarketingTermsAgreedAt()); // 동의 시점 유지
+        }
+
+        @Test
+        @DisplayName("성공 - 약관 버전이 올라간 뒤 다시 동의하면 새 버전 동의가 저장된다")
+        void updateOptionalTerms_success_savesConsent_whenNewTermsVersionPublished() {
+            // given - 회원은 동의 상태지만 최신 버전에는 동의 이력이 없는 경우
+            member.updateMarketingConsent(true, LocalDateTime.of(2026, 8, 1, 10, 0));
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(allLatestVersions).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+
+            // when
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(true, null));
+
+            // then
+            verify(saveMemberTermsConsentPort, times(1)).saveAll(argThat(consents ->
+                    consents.size() == 1 && consents.get(0).getTermsVersionId().equals(MARKETING_VERSION_ID)
+            ));
+            verify(saveMemberTermsConsentPort, times(1)).saveAllHistory(anyList());
         }
 
         @Test
@@ -979,9 +1003,9 @@ class MemberServiceTest {
         }
 
         @Test
-        @DisplayName("성공 - 동의한 적 없는 항목을 거부하면 삭제 없이 이력만 남는다")
-        void updateOptionalTerms_success_savesHistoryOnly_whenDisagreedWithoutConsent() {
-            // given
+        @DisplayName("성공 - 이미 거부 상태인 항목을 다시 거부하면 아무것도 저장하지 않는다")
+        void updateOptionalTerms_success_skipsConsent_whenAlreadyDisagreed() {
+            // given - 동의한 적 없는 회원
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
             doReturn(allLatestVersions).when(loadTermsVersionPort).findAllLatest();
             doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
@@ -992,7 +1016,8 @@ class MemberServiceTest {
             // then
             verify(saveMemberTermsConsentPort, never()).deleteByMemberIdAndVersionIds(anyLong(), anySet());
             verify(saveMemberTermsConsentPort, never()).saveAll(anyList());
-            verify(saveMemberTermsConsentPort, times(1)).saveAllHistory(anyList());
+            verify(saveMemberTermsConsentPort, never()).saveAllHistory(anyList());
+            assertFalse(member.isMarketingTermsAgreed());
         }
 
         @Test
@@ -1223,48 +1248,86 @@ class MemberServiceTest {
         }
 
         @Test
-        @DisplayName("성공 - 전체 알림을 끄면 켜져 있던 크루 알림도 모두 꺼진다")
-        void updateOptionalTerms_success_disablesAllCrewNotifications_whenNotificationTurnedOff() {
-            // given - 저장된 설정이 있는 크루와, 설정을 저장한 적 없어 기본값(모두 켜짐)인 크루
+        @DisplayName("성공 - 전체 알림을 꺼도 크루별 알림 설정은 그대로 보존된다")
+        void updateOptionalTerms_success_keepsCrewNotifications_whenNotificationTurnedOff() {
+            // given - 정기런만 꺼둔 크루가 있는 회원
             Member member = MemberFixture.activeMember(memberId);
-            JoinedCrewDto anotherJoinedCrew = new JoinedCrewDto(20L, "아지트2", "crew2.png", "한줄 소개");
             MemberCrewNotificationSetting savedSetting = MemberCrewNotificationSetting.defaultSetting(memberId, crewId);
+            savedSetting.update(false, null);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
             doReturn(TermsVersionFixture.allLatest()).when(loadTermsVersionPort).findAllLatest();
             doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
-            doReturn(List.of(joinedCrew, anotherJoinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
-            doReturn(List.of(savedSetting)).when(loadMemberCrewNotificationSettingPort).findAllByMemberId(memberId);
 
             // when
             memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, false));
 
-            // then - 설정이 없던 크루도 기본값이 켜짐이므로 꺼진 설정을 새로 저장한다
-            verify(saveMemberCrewNotificationSettingPort, times(1)).saveAll(argThat(settings ->
-                    settings.size() == 2 && settings.stream().allMatch(MemberCrewNotificationSetting::isAllDisabled)
-            ));
-            assertThat(savedSetting.isAllDisabled()).isTrue();
+            // then - 마스터 스위치를 끈 것이므로 크루별 설정은 조회도 저장도 하지 않는다
+            verify(loadMemberCrewNotificationSettingPort, never()).findAllByMemberId(anyLong());
+            verify(saveMemberCrewNotificationSettingPort, never()).saveAll(anyList());
+            assertThat(savedSetting.isRegularRunEnabled()).isFalse(); // 꺼둔 설정 그대로
+            assertThat(savedSetting.isLightningRunEnabled()).isTrue();
+            assertFalse(member.isNotificationAgreed()); // 약관 동의는 철회된다
         }
 
         @Test
-        @DisplayName("성공 - 전체 알림을 꺼도 이미 모두 꺼져 있으면 저장하지 않는다")
-        void updateOptionalTerms_success_skipsSave_whenAllCrewNotificationsAlreadyDisabled() {
-            // given
+        @DisplayName("성공 - 이미 동의 상태에서 전체 알림을 다시 켜도 크루 알림은 모두 켜진다")
+        void updateOptionalTerms_success_enablesCrewNotifications_whenAlreadyAgreed() {
+            // given - 알림 약관에 이미 동의했지만 크루 알림은 꺼둔 상태
             Member member = MemberFixture.activeMember(memberId);
+            member.updateNotificationConsent(true, LocalDateTime.of(2026, 8, 1, 10, 0));
             MemberCrewNotificationSetting disabledSetting = MemberCrewNotificationSetting.defaultSetting(memberId, crewId);
             disabledSetting.updateAll(false);
 
             doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
             doReturn(TermsVersionFixture.allLatest()).when(loadTermsVersionPort).findAllLatest();
-            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
-            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(Set.of(TermsVersionFixture.NOTIFICATION_VERSION_ID))
+                    .when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
             doReturn(List.of(disabledSetting)).when(loadMemberCrewNotificationSettingPort).findAllByMemberId(memberId);
 
             // when
-            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, false));
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, true));
+
+            // then - 약관 기록은 그대로 두고 크루 설정만 켠다
+            verify(saveMemberTermsConsentPort, never()).saveAllHistory(anyList());
+            verify(saveMemberCrewNotificationSettingPort, times(1)).saveAll(anyList());
+            assertThat(disabledSetting.isAllEnabled()).isTrue();
+        }
+
+        @Test
+        @DisplayName("성공 - 전체 알림을 켤 때 이미 모두 켜져 있으면 저장하지 않는다")
+        void updateOptionalTerms_success_skipsSave_whenAllCrewNotificationsAlreadyEnabled() {
+            // given
+            Member member = MemberFixture.activeMember(memberId);
+            MemberCrewNotificationSetting enabledSetting = MemberCrewNotificationSetting.defaultSetting(memberId, crewId);
+
+            doReturn(Optional.of(member)).when(loadMemberPort).findById(memberId);
+            doReturn(TermsVersionFixture.allLatest()).when(loadTermsVersionPort).findAllLatest();
+            doReturn(Set.of()).when(loadTermsVersionPort).findConsentedVersionIdsByMemberId(memberId);
+            doReturn(List.of(enabledSetting)).when(loadMemberCrewNotificationSettingPort).findAllByMemberId(memberId);
+
+            // when
+            memberService.updateOptionalTerms(memberId, UpdateOptionalTermsCommand.of(null, true));
 
             // then
             verify(saveMemberCrewNotificationSettingPort, never()).saveAll(anyList());
+        }
+
+        @Test
+        @DisplayName("성공 - 크루별 알림을 모두 꺼도 전체 알림(약관 동의)은 유지된다")
+        void updateCrewNotificationSetting_success_keepsNotificationConsent_whenAllCrewNotificationsDisabled() {
+            // given
+            doReturn(List.of(joinedCrew)).when(loadCrewMemberPort).findJoinedCrewsByMemberId(memberId);
+            doReturn(Optional.empty()).when(loadMemberCrewNotificationSettingPort).findByMemberIdAndCrewId(memberId, crewId);
+
+            // when - 크루 전체알림을 끈다
+            memberService.updateCrewNotificationSetting(
+                    memberId, crewId, UpdateCrewNotificationSettingCommand.of(false, null, null));
+
+            // then - 마스터(약관 동의)는 건드리지 않는다
+            verify(saveMemberPort, never()).save(any(Member.class));
+            verify(saveMemberTermsConsentPort, never()).saveAllHistory(anyList());
+            verify(saveMemberTermsConsentPort, never()).deleteByMemberIdAndVersionIds(anyLong(), anySet());
         }
     }
 }

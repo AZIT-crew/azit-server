@@ -289,8 +289,11 @@ public class MemberService implements MemberUseCase {
         if (command.notificationAgreed() != null) {
             applyOptionalConsent(member, TermsType.NOTIFICATION, command.notificationAgreed(), consentedVersionIds, now);
 
-            // 전체 알림을 켜고 끄면 크루별 알림도 모두 따라서 on, off
-            applyAllCrewNotifications(memberId, command.notificationAgreed());
+            // 전체 알림을 켜면 크루별 알림도 모두 on
+            // 끌 때는 약관 동의만 철회하고 크루별 설정은 보존
+            if (command.notificationAgreed()) {
+                enableAllCrewNotifications(memberId);
+            }
         }
 
         saveMemberPort.save(member);
@@ -304,6 +307,11 @@ public class MemberService implements MemberUseCase {
         TermsVersion latestVersion = loadLatestTermsVersion(termsType);
         Set<Long> versionIds = Set.of(latestVersion.getId());
         boolean alreadyConsented = consentedVersionIds.contains(latestVersion.getId());
+
+        // 이미 같은 상태면 동의 시점과 이력을 그대로 둔다
+        if (agreed == isConsentAgreed(member, termsType) && agreed == alreadyConsented) {
+            return;
+        }
 
         switch (termsType) {
             case MARKETING -> member.updateMarketingConsent(agreed, now);
@@ -369,33 +377,29 @@ public class MemberService implements MemberUseCase {
         return memberResponseMapper.toCrewNotificationSettingResponse(joinedCrew, setting);
     }
 
-    // 전체 알림 on/off 를 참여 중인 모든 크루의 알림 설정에 반영
-    private void applyAllCrewNotifications(Long memberId, boolean enabled) {
-        Map<Long, MemberCrewNotificationSetting> settingsByCrewId = loadSettingsByCrewId(memberId);
-
-        // 설정을 저장한 적 없는 크루는 기본값이 '모두 켜짐'이라, 켤 때는 저장된 설정만 갱신
-        // 끌 때는 기본값이 켜짐이므로 참여 중인 크루 전체를 대상으로 off
-        List<MemberCrewNotificationSetting> targets = enabled
-                ? settingsByCrewId.values().stream()
-                        .filter(setting -> !setting.isAllEnabled())
-                        .toList()
-                : loadCrewMemberPort.findJoinedCrewsByMemberId(memberId).stream()
-                        .map(joinedCrew -> settingsByCrewId.getOrDefault(joinedCrew.crewId(),
-                                MemberCrewNotificationSetting.defaultSetting(memberId, joinedCrew.crewId())))
-                        .filter(setting -> !setting.isAllDisabled())
-                        .toList();
+    // 전체 알림을 켜면 참여 중인 모든 크루의 알림 on
+    private void enableAllCrewNotifications(Long memberId) {
+        List<MemberCrewNotificationSetting> targets = loadMemberCrewNotificationSettingPort.findAllByMemberId(memberId).stream()
+                .filter(setting -> !setting.isAllEnabled())
+                .toList();
 
         if (targets.isEmpty()) return;
 
-        targets.forEach(setting -> setting.updateAll(enabled));
+        targets.forEach(setting -> setting.updateAll(true));
         saveMemberCrewNotificationSettingPort.saveAll(targets);
-        log.info("[MEMBER] memberId: {} 의 전체 알림이 {}져 크루 {}곳의 알림 설정을 모두 {}니다.",
-                memberId, enabled ? "켜" : "꺼", targets.size(), enabled ? "켭" : "끕");
     }
 
     private Map<Long, MemberCrewNotificationSetting> loadSettingsByCrewId(Long memberId) {
         return loadMemberCrewNotificationSettingPort.findAllByMemberId(memberId).stream()
                 .collect(Collectors.toMap(MemberCrewNotificationSetting::getCrewId, setting -> setting));
+    }
+
+    private boolean isConsentAgreed(Member member, TermsType termsType) {
+        return switch (termsType) {
+            case MARKETING -> member.isMarketingTermsAgreed();
+            case NOTIFICATION -> member.isNotificationAgreed();
+            default -> throw new BusinessException(MemberErrorCode.TERMS_VERSION_NOT_FOUND); // 선택 약관이 아님
+        };
     }
 
     private TermsVersion loadLatestTermsVersion(TermsType termsType) {

@@ -29,11 +29,6 @@ public class MemberCrewNotificationSetting {
         return this.isRegularRunEnabled && this.isLightningRunEnabled;
     }
 
-    // 크루 알림이 모두 꺼진 상태
-    public boolean isAllDisabled() {
-        return !this.isRegularRunEnabled && !this.isLightningRunEnabled;
-    }
-
     // 크루 '전체알림' 토글 (정기런, 번개런 모두 켜기)
     public void updateAll(boolean enabled) {
         this.isRegularRunEnabled = enabled;
