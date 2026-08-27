@@ -24,6 +24,7 @@ import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberRole;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberStatus;
 import com.youthexpedition.azit.modules.crew.domain.model.provider.CrewImageProvider;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberCrewNotificationSettingPort;
+import com.youthexpedition.azit.modules.notification.application.port.in.RecordNotificationUseCase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -54,6 +55,7 @@ public class CrewService implements CrewUseCase {
     private final CrewImageProvider crewImageProvider;
     private final ImageUpdateUtil imageUpdateUtil;
     private final SaveMemberCrewNotificationSettingPort saveMemberCrewNotificationSettingPort;
+    private final RecordNotificationUseCase recordNotificationUseCase;
 
     private static final Long MAX_CREW_LIMIT = 3L;
 
@@ -141,6 +143,9 @@ public class CrewService implements CrewUseCase {
                             saveCrewMemberPort.save(newMember);
                         }
                 );
+
+        // 크루장에게 가입 요청 알림
+        recordNotificationUseCase.recordCrewJoinRequested(crew.getId(), command.memberId());
     }
 
     @Override
@@ -189,6 +194,9 @@ public class CrewService implements CrewUseCase {
         // 크루 인원 수 증가
         log.info("[CREW] crewId: {} 에서 memberId: {} 가 가입되어 크루 인원 수가 증가합니다.", command.crewId(), command.targetMemberId());
         saveCrewPort.incrementMemberCount(command.crewId());
+
+        // 신청자에게 승인 알림
+        recordNotificationUseCase.recordCrewJoinApproved(command.crewId(), command.targetMemberId());
     }
 
     @Override
@@ -207,6 +215,9 @@ public class CrewService implements CrewUseCase {
 
         targetCrewMember.reject();
         saveCrewMemberPort.save(targetCrewMember);
+
+        // 신청자에게 거절 알림
+        recordNotificationUseCase.recordCrewJoinRejected(command.crewId(), command.targetMemberId());
     }
 
     @Override

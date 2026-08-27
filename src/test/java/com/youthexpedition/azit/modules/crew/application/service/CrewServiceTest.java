@@ -34,6 +34,7 @@ import com.youthexpedition.azit.modules.crew.application.port.in.CrewScheduleUse
 import com.youthexpedition.azit.modules.crew.application.port.out.LoadCrewSchedulePort;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewStatus;
 import com.youthexpedition.azit.modules.member.application.port.out.SaveMemberCrewNotificationSettingPort;
+import com.youthexpedition.azit.modules.notification.application.port.in.RecordNotificationUseCase;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -68,6 +69,8 @@ class CrewServiceTest {
     private LoadCrewSchedulePort loadCrewSchedulePort;
     @Mock
     private SaveMemberCrewNotificationSettingPort saveMemberCrewNotificationSettingPort;
+    @Mock
+    private RecordNotificationUseCase recordNotificationUseCase;
     @InjectMocks
     private CrewService crewService;
 
