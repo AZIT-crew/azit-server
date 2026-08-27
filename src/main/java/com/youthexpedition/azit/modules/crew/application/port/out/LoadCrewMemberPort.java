@@ -14,6 +14,7 @@ import java.util.Optional;
 
 public interface LoadCrewMemberPort {
     Optional<CrewMember> findByCrewIdAndMemberId(Long crewId, Long memberId);
+    Optional<CrewMember> findLeaderByCrewId(Long crewId); // 가입 요청 알림 수신자
     Optional<CrewMemberStatus> findStatusByCrewIdAndMemberId(Long crewId, Long memberId);
     List<JoinRequestDto> findJoinRequestsByCrewId(Long crewId);
     Optional<CrewMember> findRecentJoinedCrewMember(Long memberId);

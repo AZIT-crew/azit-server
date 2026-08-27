@@ -11,6 +11,7 @@ import com.youthexpedition.azit.modules.crew.application.port.out.query.CrewMemb
 import com.youthexpedition.azit.modules.crew.application.port.out.query.JoinedCrewDto;
 import com.youthexpedition.azit.modules.crew.application.port.out.query.JoinRequestDto;
 import com.youthexpedition.azit.modules.crew.domain.model.CrewMember;
+import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberRole;
 import com.youthexpedition.azit.modules.crew.domain.model.enums.CrewMemberStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -39,6 +40,12 @@ public class CrewMemberPersistenceAdapter implements LoadCrewMemberPort, SaveCre
     @Override
     public Optional<CrewMember> findByCrewIdAndMemberId(Long crewId, Long memberId) {
         return crewMemberRepository.findByCrewIdAndMemberId(crewId, memberId)
+                .map(crewMemberMapper::toDomain);
+    }
+
+    @Override
+    public Optional<CrewMember> findLeaderByCrewId(Long crewId) {
+        return crewMemberRepository.findByCrew_IdAndRoleAndStatus(crewId, CrewMemberRole.LEADER, CrewMemberStatus.JOINED)
                 .map(crewMemberMapper::toDomain);
     }
 
