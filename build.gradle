@@ -92,6 +92,9 @@ dependencies {
     // 쿼리 로깅
     implementation 'com.github.gavlyukovskiy:p6spy-spring-boot-starter:1.9.1'
 
+    // FCM 푸시 알림
+    implementation 'com.google.firebase:firebase-admin:9.4.1'
+
 }
 
 dependencyManagement {
