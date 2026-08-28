@@ -11,6 +11,7 @@ import com.youthexpedition.azit.modules.member.domain.model.Member;
 import com.youthexpedition.azit.modules.notification.application.port.in.command.PushDispatchCommand;
 import com.youthexpedition.azit.modules.notification.application.port.out.LoadNotificationOutboxPort;
 import com.youthexpedition.azit.modules.notification.application.port.out.SaveNotificationOutboxPort;
+import com.youthexpedition.azit.modules.notification.application.port.out.LoadNotificationPort;
 import com.youthexpedition.azit.modules.notification.application.port.out.SaveNotificationPort;
 import com.youthexpedition.azit.modules.notification.application.service.dto.CrewJoinNotificationPayload;
 import com.youthexpedition.azit.modules.notification.application.service.dto.OutboxProcessResult;
@@ -41,6 +42,7 @@ public class NotificationOutboxProcessor {
     private final LoadNotificationOutboxPort loadNotificationOutboxPort;
     private final SaveNotificationOutboxPort saveNotificationOutboxPort;
     private final SaveNotificationPort saveNotificationPort;
+    private final LoadNotificationPort loadNotificationPort;
     private final LoadCrewPort loadCrewPort;
     private final LoadCrewMemberPort loadCrewMemberPort;
     private final LoadMemberPort loadMemberPort;
@@ -107,7 +109,8 @@ public class NotificationOutboxProcessor {
         return loadMemberPort.findById(notification.getReceiverId())
                 .filter(Member::isNotificationAgreed)
                 .map(member -> PushDispatchCommand.of(List.of(member.getId()), notification.getType(),
-                        notification.getTitle(), notification.getBody(), notification.getCrewId()))
+                        notification.getTitle(), notification.getBody(), notification.getCrewId(),
+                        (int) loadNotificationPort.countUnreadByReceiverId(member.getId())))
                 .orElse(null);
     }
 

@@ -106,7 +106,7 @@ class PushNotificationDispatcherTest {
 
     private PushDispatchCommand command() {
         return PushDispatchCommand.of(List.of(RECEIVER_ID), NotificationType.CREW_JOIN_APPROVED,
-                "크루 가입 승인", "아지트 크루 가입이 승인되었어요!", CREW_ID);
+                "크루 가입 승인", "아지트 크루 가입이 승인되었어요!", CREW_ID, 3);
     }
 
     private DeviceToken deviceToken(String token) {

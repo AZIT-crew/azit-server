@@ -58,7 +58,7 @@ public class PushNotificationDispatcher implements DispatchPushUseCase {
     private List<String> sendChunk(PushDispatchCommand command, List<String> tokens) {
         try {
             PushSendResult result = pushSenderPort.send(PushMessage.of(
-                    tokens, command.title(), command.body(), command.type(), command.crewId()));
+                    tokens, command.title(), command.body(), command.type(), command.crewId(), command.badgeCount()));
 
             log.info("[NOTIFICATION] 푸시 발송 결과 - 성공: {}건, 실패: {}건", result.successCount(), result.failureCount());
             return result.invalidTokens();

@@ -100,6 +100,6 @@ class NotificationOutboxServiceTest {
 
     private PushDispatchCommand pushTarget() {
         return PushDispatchCommand.of(List.of(1L), NotificationType.CREW_JOIN_APPROVED,
-                "크루 가입 승인", "아지트 크루 가입이 승인되었어요!", 10L);
+                "크루 가입 승인", "아지트 크루 가입이 승인되었어요!", 10L, 1);
     }
 }

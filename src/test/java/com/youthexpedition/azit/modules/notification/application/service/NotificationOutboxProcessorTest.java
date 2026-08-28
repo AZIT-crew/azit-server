@@ -12,6 +12,7 @@ import com.youthexpedition.azit.modules.member.domain.model.Member;
 import com.youthexpedition.azit.modules.member.fixture.MemberFixture;
 import com.youthexpedition.azit.modules.notification.application.port.out.LoadNotificationOutboxPort;
 import com.youthexpedition.azit.modules.notification.application.port.out.SaveNotificationOutboxPort;
+import com.youthexpedition.azit.modules.notification.application.port.out.LoadNotificationPort;
 import com.youthexpedition.azit.modules.notification.application.port.out.SaveNotificationPort;
 import com.youthexpedition.azit.modules.notification.application.service.dto.OutboxProcessResult;
 import com.youthexpedition.azit.modules.notification.domain.model.NotificationOutbox;
@@ -56,6 +57,8 @@ class NotificationOutboxProcessorTest {
     @Mock
     private SaveNotificationPort saveNotificationPort;
     @Mock
+    private LoadNotificationPort loadNotificationPort;
+    @Mock
     private LoadCrewPort loadCrewPort;
     @Mock
     private LoadCrewMemberPort loadCrewMemberPort;
@@ -95,6 +98,7 @@ class NotificationOutboxProcessorTest {
         doReturn(Optional.of(crew())).when(loadCrewPort).findById(CREW_ID);
         doReturn(Optional.of(leader())).when(loadCrewMemberPort).findLeaderByCrewId(CREW_ID);
         doReturn(Optional.of(notificationAgreedMember(LEADER_ID))).when(loadMemberPort).findById(LEADER_ID);
+        doReturn(3L).when(loadNotificationPort).countUnreadByReceiverId(LEADER_ID);
 
         // when
         OutboxProcessResult result = notificationOutboxProcessor.processNext();
@@ -106,6 +110,7 @@ class NotificationOutboxProcessorTest {
         assertThat(outbox.getStatus()).isEqualTo(NotificationOutboxStatus.DONE);
         assertThat(result.hasPushTarget()).isTrue();
         assertThat(result.pushTarget().receiverIds()).containsExactly(LEADER_ID);
+        assertThat(result.pushTarget().badgeCount()).isEqualTo(3); // iOS 배지에 실을 안 읽은 알림 개수
     }
 
     @Test

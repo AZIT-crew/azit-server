@@ -1,5 +1,7 @@
 package com.youthexpedition.azit.modules.notification.adapter.out.external;
 
+import com.google.firebase.messaging.Aps;
+import com.google.firebase.messaging.ApnsConfig;
 import com.google.firebase.messaging.BatchResponse;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
@@ -59,7 +61,17 @@ public class FcmPushAdapter implements PushSenderPort {
                         .setTitle(message.title())
                         .setBody(message.body())
                         .build())
+                .setApnsConfig(toApnsConfig(message))
                 .putAllData(toData(message))
+                .build();
+    }
+
+    // iOS 배지. 안드로이드는 이 설정을 무시하므로 플랫폼별로 나눠 보낼 필요가 없음
+    private ApnsConfig toApnsConfig(PushMessage message) {
+        return ApnsConfig.builder()
+                .setAps(Aps.builder()
+                        .setBadge(message.badgeCount())
+                        .build())
                 .build();
     }
 
