@@ -47,7 +47,7 @@ public class RecordNotificationService implements RecordNotificationUseCase {
         String payload = serialize(CrewJoinNotificationPayload.of(crewId, memberId));
         saveNotificationOutboxPort.save(NotificationOutbox.create(type, payload));
 
-        log.info("[NOTIFICATION] {} 알림 발송을 요청합니다. crewId: {}, memberId: {}", type, crewId, memberId);
+        log.debug("[NOTIFICATION] {} 알림 발송을 요청합니다. crewId: {}, memberId: {}", type, crewId, memberId);
     }
 
     private String serialize(CrewJoinNotificationPayload payload) {

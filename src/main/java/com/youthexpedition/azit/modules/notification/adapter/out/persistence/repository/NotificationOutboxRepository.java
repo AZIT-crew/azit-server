@@ -12,7 +12,7 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
 
     /**
      * 대기 중인 아웃박스를 한 건 선점함.
-     * SKIP LOCKED 로 다른 인스턴스가 이미 잡은 행을 건너뛰므로 중복 처리가 발생하지 않음. (MySQL 8.0 이상)
+     * SKIP LOCKED 로 다른 인스턴스가 이미 잡은 행을 건너뛰므로 중복 처리가 발생하지 않음.
      * 직전에 실패한 건은 재시도 대기 시간이 지난 뒤에만 다시 대상이 됨.
      */
     @Query(value = """

@@ -55,14 +55,13 @@ public class NotificationOutboxProcessor {
     private int retryBackoffSeconds;
 
     /**
-     * 대기 중인 아웃박스 한 건을 처리함.
-     * 처리할 건이 없거나 푸시 대상이 없으면 비어 있는 결과를 반환함.
+     * 대기 중인 아웃박스 한 건 처리
      */
     @Transactional
     public OutboxProcessResult processNext() {
         LocalDateTime now = LocalDateTime.now();
         Optional<NotificationOutbox> claimed = loadNotificationOutboxPort.claimNext(now.minusSeconds(retryBackoffSeconds));
-        if (claimed.isEmpty()) return OutboxProcessResult.nothingToProcess();
+        if (claimed.isEmpty()) return OutboxProcessResult.nothingToProcess(); // 처리할 건 또는 푸시 대상 없음
 
         NotificationOutbox outbox = claimed.get();
         try {
@@ -73,13 +72,13 @@ public class NotificationOutboxProcessor {
 
             return OutboxProcessResult.processed(toDispatchCommand(notification));
         } catch (Exception e) {
-            // 이 건만 실패로 기록함. 재시도 한도를 넘으면 FAILED 로 바뀌어 다시 선점되지 않음
+            // 실패로 기록함. 재시도 한도를 넘으면 FAILED 처리 -> 수동 재처리?
             outbox.markFailed(now, e.getMessage(), maxRetryCount);
             saveNotificationOutboxPort.save(outbox);
             log.error("[NOTIFICATION] 아웃박스 처리에 실패했습니다. outboxId: {}, retryCount: {}, status: {}",
                     outbox.getId(), outbox.getRetryCount(), outbox.getStatus(), e);
 
-            return OutboxProcessResult.processed(null); // 실패도 이번 사이클에서 처리한 건으로 셈
+            return OutboxProcessResult.processed(null); // 실패도 처리 완료로 취급
         }
     }
 

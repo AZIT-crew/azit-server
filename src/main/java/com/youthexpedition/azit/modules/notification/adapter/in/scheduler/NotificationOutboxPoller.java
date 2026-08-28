@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * 아웃박스를 주기적으로 확인해 알림을 생성하고 푸시를 발송함.
+ * 아웃박스를 주기적으로 확인해 알림을 생성하고 푸시를 발송하는 폴러.
  * 알림 생성(트랜잭션)이 끝난 뒤에 푸시를 보내므로, 푸시가 실패해도 알림함에는 남음.
  */
 @Slf4j

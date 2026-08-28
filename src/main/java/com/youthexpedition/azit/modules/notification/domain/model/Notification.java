@@ -7,10 +7,6 @@ import lombok.Getter;
 
 import java.time.LocalDateTime;
 
-/**
- * 알림함에 쌓이는 인앱 알림.
- * 문구는 생성 시점의 크루명으로 굳혀서 저장함 (이후 크루명이 바뀌어도 당시 알림은 그대로 남아야 함).
- */
 @Getter
 @Builder
 @AllArgsConstructor
@@ -18,7 +14,7 @@ public class Notification {
     private final Long id;
     private final Long receiverId;
     private final NotificationType type;
-    private final String title;
+    private final String title; // title, body는 알림 생성 시점 기준으로 저장
     private final String body;
     private final Long crewId; // 알림을 탭했을 때 이동할 대상
     private boolean isRead;
@@ -37,7 +33,7 @@ public class Notification {
     }
 
     public void markAsRead(LocalDateTime now) {
-        if (this.isRead) return; // 이미 읽은 알림은 읽은 시점을 유지한다
+        if (this.isRead) return; // 이미 읽은 알림은 읽은 시점을 유지
 
         this.isRead = true;
         this.readAt = now;

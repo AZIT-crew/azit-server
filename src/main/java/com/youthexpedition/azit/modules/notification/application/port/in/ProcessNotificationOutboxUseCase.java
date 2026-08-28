@@ -5,6 +5,6 @@ import com.youthexpedition.azit.modules.notification.application.port.in.command
 import java.util.List;
 
 public interface ProcessNotificationOutboxUseCase {
-    // 대기 중인 아웃박스를 선점해 인앱 알림을 생성하고, 푸시 발송 대상을 반환함
+    // 대기 중인 아웃박스를 선점해 인앱 알림을 생성하고, 푸시 발송 대상을 반환
     List<PushDispatchCommand> processPending();
 }

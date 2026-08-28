@@ -8,11 +8,6 @@ import lombok.Getter;
 
 import java.time.LocalDateTime;
 
-/**
- * 알림 발송 요청 기록.
- * 비즈니스 트랜잭션과 같은 트랜잭션에서 저장되므로, 가입 처리가 커밋되면 알림 요청도 반드시 남음.
- * 폴러가 이 행을 집어 실제 알림 생성·발송을 수행함.
- */
 @Getter
 @Builder
 @AllArgsConstructor

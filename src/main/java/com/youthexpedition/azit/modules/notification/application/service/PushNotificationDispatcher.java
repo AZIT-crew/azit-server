@@ -15,10 +15,6 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * 수신자의 기기 토큰을 모아 푸시를 발송함.
- * 푸시 실패는 알림 생성에 영향을 주지 않아야 하므로 예외를 밖으로 던지지 않음.
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -38,7 +34,7 @@ public class PushNotificationDispatcher implements DispatchPushUseCase {
                 .toList();
 
         if (tokens.isEmpty()) {
-            log.info("[NOTIFICATION] 등록된 기기가 없어 푸시를 건너뜁니다. receiverIds: {}", command.receiverIds());
+            log.debug("[NOTIFICATION] 등록된 기기가 없어 푸시를 건너뜁니다. receiverIds: {}", command.receiverIds());
             return;
         }
 
@@ -63,7 +59,7 @@ public class PushNotificationDispatcher implements DispatchPushUseCase {
             log.info("[NOTIFICATION] 푸시 발송 결과 - 성공: {}건, 실패: {}건", result.successCount(), result.failureCount());
             return result.invalidTokens();
         } catch (Exception e) {
-            log.error("[NOTIFICATION] 푸시 발송에 실패했습니다. type: {}, 대상 토큰 수: {}", command.type(), tokens.size(), e);
+            log.error("[NOTIFICATION] 푸시 발송에 실패했습니다. type: {}, 대상 토큰 수: {}", command.type(), tokens.size(), e); // 알림 생성에 영향 주지 않기 위해 에러 처리 x
             return List.of();
         }
     }
