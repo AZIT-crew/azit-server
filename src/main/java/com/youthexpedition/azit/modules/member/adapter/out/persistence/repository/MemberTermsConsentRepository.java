@@ -15,15 +15,15 @@ public interface MemberTermsConsentRepository extends JpaRepository<MemberTermsC
     @Query("SELECT c.termsVersionId FROM MemberTermsConsentEntity c WHERE c.memberId = :memberId")
     Set<Long> findTermsVersionIdsByMemberId(@Param("memberId") Long memberId);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE MemberTermsConsentEntity c SET c.agreedAt = :agreedAt, c.updatedAt = :agreedAt WHERE c.memberId = :memberId AND c.termsVersionId IN :versionIds")
     void updateAgreedAt(@Param("memberId") Long memberId, @Param("versionIds") Collection<Long> versionIds, @Param("agreedAt") LocalDateTime agreedAt);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM MemberTermsConsentEntity c WHERE c.memberId = :memberId AND c.termsVersionId IN :versionIds")
     void deleteByMemberIdAndTermsVersionIdIn(@Param("memberId") Long memberId, @Param("versionIds") Collection<Long> versionIds);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM MemberTermsConsentEntity c WHERE c.memberId = :memberId")
     void deleteByMemberId(@Param("memberId") Long memberId);
 }
