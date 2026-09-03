@@ -24,7 +24,7 @@ public interface CrewMemberRepository extends JpaRepository<CrewMemberEntity, Lo
     @Query("SELECT cm FROM CrewMemberEntity cm JOIN FETCH cm.crew WHERE cm.memberId = :memberId AND cm.status = :status")
     List<CrewMemberEntity> findAllJoinedCrewsByMemberId(@Param("memberId") Long memberId, @Param("status") CrewMemberStatus status);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM CrewMemberEntity cm WHERE cm.memberId = :memberId")
     void deleteByMemberId(@Param("memberId") Long memberId);
 }

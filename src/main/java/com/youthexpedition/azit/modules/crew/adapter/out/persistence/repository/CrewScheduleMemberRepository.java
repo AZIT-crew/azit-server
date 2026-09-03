@@ -8,7 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface CrewScheduleMemberRepository extends JpaRepository<CrewScheduleMemberEntity, Long> {
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM CrewScheduleMemberEntity csm WHERE csm.memberId = :memberId")
     void deleteByMemberId(@Param("memberId") Long memberId);
 }

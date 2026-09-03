@@ -12,7 +12,7 @@ public interface DeliveryAddressRepository extends JpaRepository<DeliveryAddress
     boolean existsByMemberId(Long memberId);
     Optional<DeliveryAddressEntity> findByMemberIdAndIsDefaultTrue(Long memberId);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM DeliveryAddressEntity da WHERE da.member.id = :memberId")
     void deleteByMemberId(@Param("memberId") Long memberId);
 }

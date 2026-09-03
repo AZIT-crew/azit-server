@@ -23,7 +23,7 @@ public interface MemberTermsConsentHistoryRepository extends JpaRepository<Membe
                                                                           @Param("termsType") TermsType termsType,
                                                                           Pageable pageable);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM MemberTermsConsentHistoryEntity h WHERE h.memberId = :memberId")
     void deleteByMemberId(@Param("memberId") Long memberId);
 }

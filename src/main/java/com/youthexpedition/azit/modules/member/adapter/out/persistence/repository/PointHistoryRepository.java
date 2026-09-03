@@ -8,7 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface PointHistoryRepository extends JpaRepository<PointHistoryEntity, Long> {
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("DELETE FROM PointHistoryEntity ph WHERE ph.memberId = :memberId")
     void deleteByMemberId(@Param("memberId") Long memberId);
 }
