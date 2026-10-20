@@ -66,7 +66,7 @@ fi
 #  신규 컨테이너 헬스 체크
 echo "🏥 헬스 체크를 시작합니다 (http://localhost:$TARGET_PORT/actuator/health)..."
 
-HEALTH_MAX_RETRY=30
+HEALTH_MAX_RETRY=45
 HEALTH_OK=0
 
 for retry_count in $(seq 2 $HEALTH_MAX_RETRY)
