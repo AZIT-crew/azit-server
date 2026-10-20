@@ -2,8 +2,10 @@ services:
   redis:
     image: redis:latest
     container_name: azit-redis
+    restart: unless-stopped
     volumes:
-      - ~/app/redis-data:/data
+      # sudo 실행 시 ~ 가 /root 로 해석되므로 절대 경로 사용함
+      - /home/ubuntu/app/redis-data:/data
     command: >
       redis-server
       --appendonly yes

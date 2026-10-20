@@ -17,32 +17,91 @@ fi
 
 echo "🚀 [무중단 배포 시작] 타겟: $TARGET_COLOR ($TARGET_PORT)"
 
+# 재부팅 후 depends_on 만으로는 신뢰할 수 없어 Redis 를 먼저 띄우고 PONG 확인함
+if [ ! -f ./.env ]; then
+  echo "❌ .env 파일이 없어 배포를 중단합니다."
+  exit 1
+fi
+
+# .env 에서 REDIS_PASSWORD 만 읽음 (로그 출력 금지)
+REDIS_PASSWORD=$(grep -m1 '^REDIS_PASSWORD=' ./.env | cut -d= -f2- | tr -d '\r')
+
+if [ -z "$REDIS_PASSWORD" ]; then
+  echo "❌ .env 에서 REDIS_PASSWORD 를 읽지 못해 배포를 중단합니다."
+  exit 1
+fi
+
+echo "🧰 Redis 컨테이너를 기동합니다. (azit-redis)"
+if ! sudo docker compose up -d redis; then
+  echo "❌ Redis 컨테이너 기동에 실패하여 배포를 중단합니다."
+  exit 1
+fi
+
+REDIS_MAX_RETRY=10
+REDIS_READY=0
+
+for retry_count in $(seq 1 $REDIS_MAX_RETRY)
+do
+  # -a 대신 REDISCLI_AUTH 로 넘겨 비밀번호 노출 방지
+  PING_RESULT=$(sudo docker exec -e REDISCLI_AUTH="$REDIS_PASSWORD" azit-redis redis-cli ping 2>/dev/null)
+
+  if [ "$PING_RESULT" = "PONG" ]; then
+    REDIS_READY=1
+    echo "✅ Redis 응답 확인 (PONG) ($retry_count/$REDIS_MAX_RETRY)"
+    break
+  fi
+
+  echo "⏳ Redis 응답 대기 중... ($retry_count/$REDIS_MAX_RETRY)"
+
+  if [ "$retry_count" -lt "$REDIS_MAX_RETRY" ]; then
+    sleep 2
+  fi
+done
+
+if [ "$REDIS_READY" -ne 1 ]; then
+  echo "❌ Redis 가 응답하지 않아 배포를 중단합니다."
+  sudo docker logs --tail 30 azit-redis || true
+  exit 1
+fi
+
 # 새로운 버전의 컨테이너 실행
 # docker-compose.yml에 정의된 서비스 이름을 인자로 전달
-sudo docker compose up -d azit-$TARGET_COLOR
+if ! sudo docker compose up -d azit-$TARGET_COLOR; then
+  echo "❌ $TARGET_COLOR 컨테이너 기동에 실패하여 배포를 중단합니다."
+  exit 1
+fi
 
 #  신규 컨테이너 헬스 체크
 echo "🏥 헬스 체크를 시작합니다 (http://localhost:$TARGET_PORT/actuator/health)..."
 
-for retry_count in {1..30}
-do
-  RESPONSE=$(curl -s http://localhost:$TARGET_PORT/actuator/health)
-  UP_COUNT=$(echo $RESPONSE | grep 'UP' | wc -l)
+HEALTH_MAX_RETRY=30
+HEALTH_OK=0
 
-  if [ $UP_COUNT -ge 1 ]; then
-    echo "✅ 헬스 체크 성공! ($retry_count/30)"
+for retry_count in $(seq 1 $HEALTH_MAX_RETRY)
+do
+  RESPONSE=$(curl -s --max-time 5 "http://localhost:$TARGET_PORT/actuator/health" || true)
+
+  # show-details: never 라 본문이 {"status":"UP"} 형태임
+  if echo "$RESPONSE" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
+    HEALTH_OK=1
+    echo "✅ 헬스 체크 성공! ($retry_count/$HEALTH_MAX_RETRY)"
     break
-  else
-    echo "⏳ 대기 중... ($retry_count/30)"
+  fi
+
+  echo "⏳ 대기 중... ($retry_count/$HEALTH_MAX_RETRY)"
+
+  if [ "$retry_count" -lt "$HEALTH_MAX_RETRY" ]; then
     sleep 5
   fi
-
-  if [ $retry_count -eq 30 ]; then
-    echo "❌ 헬스 체크에 실패하여 배포를 중단합니다."
-    sudo docker stop azit-$TARGET_COLOR
-    exit 1
-  fi
 done
+
+# 실패 시 nginx 스위칭 전에 중단함
+if [ "$HEALTH_OK" -ne 1 ]; then
+  echo "❌ 헬스 체크에 실패하여 배포를 중단합니다. ($HEALTH_MAX_RETRY 회 시도)"
+  sudo docker logs --tail 50 azit-$TARGET_COLOR || true
+  sudo docker stop azit-$TARGET_COLOR
+  exit 1
+fi
 
 # Nginx 포트 스위칭 (Nginx가 참조하는 설정 파일 업데이트)
 echo "🔄 Nginx 연결 포트를 $TARGET_PORT 로 변경합니다."
