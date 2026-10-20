@@ -23,14 +23,6 @@ if [ ! -f ./.env ]; then
   exit 1
 fi
 
-# .env 에서 REDIS_PASSWORD 만 읽음 (로그 출력 금지)
-REDIS_PASSWORD=$(grep -m1 '^REDIS_PASSWORD=' ./.env | cut -d= -f2- | tr -d '\r')
-
-if [ -z "$REDIS_PASSWORD" ]; then
-  echo "❌ .env 에서 REDIS_PASSWORD 를 읽지 못해 배포를 중단합니다."
-  exit 1
-fi
-
 echo "🧰 Redis 컨테이너를 기동합니다. (azit-redis)"
 if ! sudo docker compose up -d redis; then
   echo "❌ Redis 컨테이너 기동에 실패하여 배포를 중단합니다."
@@ -42,8 +34,8 @@ REDIS_READY=0
 
 for retry_count in $(seq 1 $REDIS_MAX_RETRY)
 do
-  # -a 대신 REDISCLI_AUTH 로 넘겨 비밀번호 노출 방지
-  PING_RESULT=$(sudo docker exec -e REDISCLI_AUTH="$REDIS_PASSWORD" azit-redis redis-cli ping 2>/dev/null)
+  # 인증은 compose 가 컨테이너에 넣어준 REDISCLI_AUTH 를 사용함
+  PING_RESULT=$(timeout 5 sudo docker exec azit-redis redis-cli ping 2>/dev/null)
 
   if [ "$PING_RESULT" = "PONG" ]; then
     REDIS_READY=1
@@ -79,7 +71,8 @@ HEALTH_OK=0
 
 for retry_count in $(seq 1 $HEALTH_MAX_RETRY)
 do
-  RESPONSE=$(curl -s --max-time 5 "http://localhost:$TARGET_PORT/actuator/health" || true)
+  # curl 이 실패(타임아웃·5xx)하면 일부 수신된 본문도 버림
+  RESPONSE=$(curl -sf --max-time 5 "http://localhost:$TARGET_PORT/actuator/health") || RESPONSE=""
 
   # show-details: never 라 본문이 {"status":"UP"} 형태임
   if echo "$RESPONSE" | grep -q '"status"[[:space:]]*:[[:space:]]*"UP"'; then
