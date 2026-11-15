@@ -77,81 +77,133 @@ jobs:
       cancel-in-progress: false
     env:
       APP_DIR: /home/ubuntu/app
-      # 입력값은 스크립트에 직접 끼워 넣지 않고 환경변수로 전달 (운영 서버에서 실행되므로 명령 주입 방지)
+      # 입력값은 스크립트에 직접 끼워 넣지 않고 환경변수로 전달 (명령 주입 방지)
       INPUT_PROFILE: ${{ github.event.inputs.profile }}
-      INPUT_VERSION: ${{ github.event.inputs.version }}
+      # 승인 대기 중 같은 version 태그가 덮어써져도 이번 빌드 이미지를 배포하도록 커밋 SHA 태그 사용
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Validate Inputs
-        run: |
-          if ! [[ "$INPUT_VERSION" =~ ^[A-Za-z0-9._-]{1,128}$ ]]; then
-            echo "❌ 잘못된 버전 형식입니다: $INPUT_VERSION"
-            exit 1
-          fi
 
       - name: Copy deploy files
         run: |
           mkdir -p "$APP_DIR"
           cp scripts/deploy.sh scripts/docker-compose.yml scripts/docker-compose.gabia.yml "$APP_DIR"/
 
-      - name: Deploy
+      - name: Write .env
+        env:
+          DB_URL: ${{ secrets.GABIA_DB_URL }}
+          DB_USERNAME: ${{ secrets.GABIA_DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.GABIA_DB_PASSWORD }}
+          MYSQL_ROOT_PASSWORD: ${{ secrets.GABIA_MYSQL_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.GABIA_MYSQL_DATABASE }}
+          MYSQL_VERSION: ${{ secrets.GABIA_MYSQL_VERSION }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          AWS_S3_ACCESS_KEY: ${{ secrets.AWS_S3_ACCESS_KEY }}
+          AWS_S3_SECRET_KEY: ${{ secrets.AWS_S3_SECRET_KEY }}
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          KAKAO_ADMIN_KEY: ${{ secrets.KAKAO_ADMIN_KEY }}
+          KAKAO_REDIRECT_URL: ${{ secrets.KAKAO_REDIRECT_URL }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          JWT_ACCESS_EXPIRATION: ${{ secrets.JWT_ACCESS_EXPIRATION }}
+          JWT_REFRESH_EXPIRATION: ${{ secrets.JWT_REFRESH_EXPIRATION }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SERVICE_ID: ${{ secrets.APPLE_SERVICE_ID }}
+          APPLE_KEY_ID: ${{ secrets.APPLE_KEY_ID }}
+          APPLE_KEY_PATH: ${{ secrets.APPLE_KEY_PATH }}
+          APPLE_REDIRECT_URL: ${{ secrets.APPLE_REDIRECT_URL }}
+          PAYMENT_BANK_NAME: ${{ secrets.PAYMENT_BANK_NAME }}
+          PAYMENT_BANK_ACCOUNT_NUMBER: ${{ secrets.PAYMENT_BANK_ACCOUNT_NUMBER }}
+          PAYMENT_BANK_ACCOUNT_HOLDER: ${{ secrets.PAYMENT_BANK_ACCOUNT_HOLDER }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+          NEW_RELIC_LICENSE_KEY: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
         run: |
-            set -e # 명령어 하나라도 실패하면 즉시 스크립트 중단 및 액션 실패 처리
-            cd "$APP_DIR"
-            umask 077 # .env 는 러너 계정만 읽을 수 있게 생성
-            # .env 파일 생성
-            # COMPOSE_FILE: deploy.sh 의 docker compose 명령이 가비아 오버라이드(MySQL)까지 함께 읽도록 함
-            cat <<EOF > .env
-            COMPOSE_FILE=docker-compose.yml:docker-compose.gabia.yml
-            TARGET_PROFILE=${INPUT_PROFILE}
-            IMAGE_TAG=${INPUT_VERSION}
-            DB_URL=${{ secrets.GABIA_DB_URL }}
-            DB_USERNAME=${{ secrets.GABIA_DB_USERNAME }}
-            DB_PASSWORD=${{ secrets.GABIA_DB_PASSWORD }}
-            MYSQL_ROOT_PASSWORD=${{ secrets.GABIA_MYSQL_ROOT_PASSWORD }}
-            MYSQL_DATABASE=${{ secrets.GABIA_MYSQL_DATABASE }}
-            MYSQL_VERSION=${{ secrets.GABIA_MYSQL_VERSION }}
-            DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
-            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-            AWS_S3_ACCESS_KEY=${{ secrets.AWS_S3_ACCESS_KEY }}
-            AWS_S3_SECRET_KEY=${{ secrets.AWS_S3_SECRET_KEY }}
-            KAKAO_REST_API_KEY=${{ secrets.KAKAO_REST_API_KEY }}
-            KAKAO_CLIENT_SECRET=${{ secrets.KAKAO_CLIENT_SECRET }}
-            KAKAO_ADMIN_KEY=${{ secrets.KAKAO_ADMIN_KEY }}
-            KAKAO_REDIRECT_URL=${{ secrets.KAKAO_REDIRECT_URL }}
-            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
-            JWT_ACCESS_EXPIRATION=${{ secrets.JWT_ACCESS_EXPIRATION }}
-            JWT_REFRESH_EXPIRATION=${{ secrets.JWT_REFRESH_EXPIRATION }}
-            APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}
-            APPLE_SERVICE_ID=${{ secrets.APPLE_SERVICE_ID }}
-            APPLE_KEY_ID=${{ secrets.APPLE_KEY_ID }}
-            APPLE_KEY_PATH=${{ secrets.APPLE_KEY_PATH }}
-            APPLE_REDIRECT_URL=${{ secrets.APPLE_REDIRECT_URL }}
-            PAYMENT_BANK_NAME=${{ secrets.PAYMENT_BANK_NAME }}
-            PAYMENT_BANK_ACCOUNT_NUMBER=${{ secrets.PAYMENT_BANK_ACCOUNT_NUMBER }}
-            PAYMENT_BANK_ACCOUNT_HOLDER=${{ secrets.PAYMENT_BANK_ACCOUNT_HOLDER }}
-            NAVER_CLIENT_ID=${{ secrets.NAVER_CLIENT_ID }}
-            NAVER_CLIENT_SECRET=${{ secrets.NAVER_CLIENT_SECRET }}
-            NEW_RELIC_LICENSE_KEY=${{ secrets.NEW_RELIC_LICENSE_KEY }}
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
-            EOF
+          set -euo pipefail
+          cd "$APP_DIR"
+          umask 077 # 러너 계정만 읽을 수 있게 생성
 
-            sudo docker pull "${{ secrets.DOCKER_USERNAME }}/azit-server:${INPUT_VERSION}"
-
-            if [ "$INPUT_PROFILE" == "prod" ]; then
-                echo "🎯 [운영 서버 - 가비아] 무중단 배포 스크립트를 실행합니다."
-                chmod +x deploy.sh
-                ./deploy.sh
-            else
-                echo "🛠️ [개발 서버 - 가비아] 컨테이너를 교체합니다."
-                sudo docker compose up -d azit-dev
+          # 시크릿을 셸/Compose 보간 없이 그대로 기록 (작은따옴표 = Compose .env 의 literal 값)
+          # 작은따옴표·역슬래시·줄바꿈은 이스케이프 규칙이 모호해 거부함
+          write_env() {
+            local key="$1" value="$2"
+            if [[ "$value" == *"'"* || "$value" == *\\* || "$value" == *$'\n'* ]]; then
+              echo "❌ $key 값에 작은따옴표/역슬래시/줄바꿈이 있어 .env 에 안전하게 쓸 수 없습니다." >&2
+              exit 1
             fi
+            printf "%s='%s'\n" "$key" "$value"
+          }
 
-            # -a 는 redis:latest 같은 보조 이미지까지 지울 수 있어 dangling 만 정리함
-            sudo docker image prune -f
+          {
+            # deploy.sh 의 docker compose 가 가비아 오버라이드(MySQL)까지 읽도록 함
+            write_env COMPOSE_FILE "docker-compose.yml:docker-compose.gabia.yml"
+            write_env TARGET_PROFILE "$INPUT_PROFILE"
+            write_env IMAGE_TAG "$IMAGE_TAG"
+            for key in \
+              DB_URL \
+              DB_USERNAME \
+              DB_PASSWORD \
+              MYSQL_ROOT_PASSWORD \
+              MYSQL_DATABASE \
+              MYSQL_VERSION \
+              DOCKER_USERNAME \
+              REDIS_PASSWORD \
+              AWS_S3_ACCESS_KEY \
+              AWS_S3_SECRET_KEY \
+              KAKAO_REST_API_KEY \
+              KAKAO_CLIENT_SECRET \
+              KAKAO_ADMIN_KEY \
+              KAKAO_REDIRECT_URL \
+              JWT_SECRET_KEY \
+              JWT_ACCESS_EXPIRATION \
+              JWT_REFRESH_EXPIRATION \
+              APPLE_TEAM_ID \
+              APPLE_SERVICE_ID \
+              APPLE_KEY_ID \
+              APPLE_KEY_PATH \
+              APPLE_REDIRECT_URL \
+              PAYMENT_BANK_NAME \
+              PAYMENT_BANK_ACCOUNT_NUMBER \
+              PAYMENT_BANK_ACCOUNT_HOLDER \
+              NAVER_CLIENT_ID \
+              NAVER_CLIENT_SECRET \
+              NEW_RELIC_LICENSE_KEY \
+              SENTRY_AUTH_TOKEN \
+              SENTRY_DSN; do
+              write_env "$key" "${!key}"
+            done
+          } > .env.tmp
+          mv .env.tmp .env
+
+      - name: Deploy
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd "$APP_DIR"
+
+          # deploy 는 sudo docker 로 실행되므로 root 의 Docker 인증 사용, pull 후 바로 로그아웃
+          echo "$DOCKER_PASSWORD" | sudo docker login -u "$DOCKER_USERNAME" --password-stdin
+          trap 'sudo docker logout >/dev/null 2>&1 || true' EXIT
+          sudo docker pull "$DOCKER_USERNAME/azit-server:$IMAGE_TAG"
+          sudo docker logout
+
+          if [ "$INPUT_PROFILE" == "prod" ]; then
+              echo "🎯 [운영 서버 - 가비아] 무중단 배포 스크립트를 실행합니다."
+              chmod +x deploy.sh
+              ./deploy.sh
+          else
+              echo "🛠️ [개발 서버 - 가비아] 컨테이너를 교체합니다."
+              sudo docker compose up -d azit-dev
+          fi
+
+          # -a 는 redis:latest 같은 보조 이미지까지 지울 수 있어 dangling 만 정리함
+          sudo docker image prune -f
 
   notify:
     needs: [ build-and-push, deploy ]
