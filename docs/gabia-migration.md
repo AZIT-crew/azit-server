@@ -60,7 +60,7 @@ AWS EC2 + 외부 DB 로 운영하던 서버를 **가비아 서버 한 대(앱 + 
 대신 public 레포에서는 **외부인이 올린 PR 의 워크플로가 이 러너(=운영 서버)에서 실행될 수 있는 위험**이 있습니다. 아래 설정을 모두 적용합니다.
 
 **① 러너 등록 (조직 레벨)**
-1. 조직 `AZIT-crew` → Settings → Actions → Runner groups → **New runner group** 으로 전용 그룹 `azit-gabia` 를 만듭니다. Default 그룹은 이후 다른 러너가 자동으로 들어가므로 쓰지 않습니다.
+1. 조직 `AZIT-crew` → Settings → Actions → Runner groups → **New runner group** 으로 전용 그룹 `azit-server-gabia` 를 만듭니다. Default 그룹은 이후 다른 러너가 자동으로 들어가므로 쓰지 않습니다.
    - Repository access: **Selected repositories → `azit-server` 만** 선택합니다.
    - **Allow public repositories** 를 체크합니다. 체크하지 않으면 public 레포인 `azit-server` 에서 러너를 쓸 수 없습니다.
    - Workflow access: **Selected workflows** 를 고르고, 배포를 실행하는 브랜치의 `deploy-gabia.yml` 만 허용합니다.
@@ -73,7 +73,7 @@ AWS EC2 + 외부 DB 로 운영하던 서버를 **가비아 서버 한 대(앱 + 
 2. Settings → Actions → Runners → New runner (Linux x64) 화면의 명령을 **dev, prod 서버 각각에서** `ubuntu` 계정으로 실행합니다. `config.sh` 에는 서버별 라벨을 추가합니다.
    ```bash
    # dev 서버에서는 gabia-dev, prod 서버에서는 gabia-prod (라벨이 바뀌면 다른 서버에 배포되니 주의)
-   ./config.sh --url https://github.com/AZIT-crew --token <화면의 토큰> --runnergroup azit-gabia --labels gabia-prod --name gabia-prod --unattended
+   ./config.sh --url https://github.com/AZIT-crew --token <화면의 토큰> --runnergroup azit-server-gabia --labels gabia-prod --name gabia-prod --unattended
    sudo ./svc.sh install ubuntu   # ubuntu 계정으로 서비스 등록 (재부팅 시 자동 시작)
    sudo ./svc.sh start
    ```
@@ -98,6 +98,7 @@ AWS EC2 + 외부 DB 로 운영하던 서버를 **가비아 서버 한 대(앱 + 
 ## 5. 첫 배포 (DNS 전환 전, 트래픽 없음)
 
 1. Actions → **azit-server CD (Deploy - Gabia)** → `prod` 로 실행하고, deploy 작업의 승인 요청을 승인합니다.
+   - 워크플로는 **실행한 브랜치의 코드**를 빌드해 배포합니다. prod 는 **main**, dev 는 **develop** 에서 실행합니다(develop 에서 prod 로 실행하면 미반영 기능이 운영에 나갑니다).
 2. MySQL 이 빈 DB 로 생성되고 앱이 뜹니다(`ddl-auto: none` 이라 테이블은 없음). 아직 DNS 가 AWS 를 가리키므로 실제 트래픽은 들어오지 않습니다.
 3. 확인
    ```bash
