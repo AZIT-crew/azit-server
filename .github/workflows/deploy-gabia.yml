@@ -27,6 +27,10 @@ on:
         type: string
         default: 'latest'
 
+# GITHUB_TOKEN 은 체크아웃용 읽기 권한만 (self-hosted runner 에 넘어가는 토큰 권한 최소화)
+permissions:
+  contents: read
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -140,9 +144,17 @@ jobs:
           }
 
           # MySQL 포트가 공인망에 열리지 않도록 비어 있거나(=127.0.0.1) 사설 IPv4 만 허용
-          if [[ -n "$MYSQL_BIND_ADDRESS" && ! "$MYSQL_BIND_ADDRESS" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.)[0-9.]+$ ]]; then
-            echo "❌ GABIA_MYSQL_BIND_ADDRESS 는 사설 IP 여야 합니다: $MYSQL_BIND_ADDRESS" >&2
-            exit 1
+          if [[ -n "$MYSQL_BIND_ADDRESS" ]]; then
+            if ! [[ "$MYSQL_BIND_ADDRESS" =~ ^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]] \
+              || (( 10#${BASH_REMATCH[1]} > 255 || 10#${BASH_REMATCH[2]} > 255 || 10#${BASH_REMATCH[3]} > 255 || 10#${BASH_REMATCH[4]} > 255 )); then
+              echo "❌ GABIA_MYSQL_BIND_ADDRESS 가 올바른 IPv4 주소가 아닙니다: $MYSQL_BIND_ADDRESS" >&2
+              exit 1
+            fi
+            first=$((10#${BASH_REMATCH[1]})); second=$((10#${BASH_REMATCH[2]}))
+            if ! (( first == 10 || first == 127 || (first == 172 && second >= 16 && second <= 31) || (first == 192 && second == 168) )); then
+              echo "❌ GABIA_MYSQL_BIND_ADDRESS 는 사설 IP 여야 합니다: $MYSQL_BIND_ADDRESS" >&2
+              exit 1
+            fi
           fi
 
           {
