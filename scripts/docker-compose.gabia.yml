@@ -28,7 +28,10 @@ services:
     volumes:
       # sudo 실행 시 ~ 가 /root 로 해석되므로 절대 경로 사용함
       - /home/ubuntu/app/mysql-data:/var/lib/mysql
-    # 외부 포트는 열지 않음 (앱은 azit-network 내부의 mysql:3306 으로 접속)
+    # 앱은 azit-network 의 mysql:3306 으로 접속, 포트는 별도 서버의 배치(사설망)와 DB 툴 접속용
+    # 기본은 서버 내부(127.0.0.1)만, MYSQL_BIND_ADDRESS 에 사설 IP 를 주면 사설망에만 열림 (공인 IP 로는 열지 말 것)
+    ports:
+      - "${MYSQL_BIND_ADDRESS:-127.0.0.1}:3306:3306"
     healthcheck:
       # 초기화 중에는 TCP 가 닫혀 있어 실제 서버가 뜬 뒤에만 성공함
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
