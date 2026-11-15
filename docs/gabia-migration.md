@@ -17,6 +17,10 @@ AWS EC2 + 외부 DB 로 운영하던 서버를 **가비아 서버 한 대(앱 + 
 앱 컨테이너는 MySQL 헬스체크가 통과한 뒤에 기동됩니다.
 
 > `deploy.yml` 과 `deploy-gabia.yml` 은 `.env` 항목이 중복되어 있습니다. 이전 기간 중 환경변수를 추가하거나 바꿀 때는 **두 파일을 함께 수정**하세요.
+> `deploy-gabia.yml` 에서는 "Write .env" 단계의 `env:` 와 `for key in` 목록 두 곳에 추가합니다.
+>
+> `deploy-gabia.yml` 은 시크릿을 `KEY='값'` 형태로 그대로 기록합니다(`$` 등 보간 없음). 값에 **작은따옴표, 역슬래시, 줄바꿈**이 있으면 배포가 실패하니 그런 문자는 쓰지 마세요.
+> Docker Hub 로그인은 배포 때 워크플로가 `DOCKER_USERNAME`/`DOCKER_PASSWORD` 시크릿으로 처리하고, 이미지를 받은 직후 로그아웃합니다. 서버에서 따로 `docker login` 할 필요는 없습니다.
 
 ## 2. GitHub Secrets 추가
 
@@ -107,22 +111,34 @@ AWS EC2 + 외부 DB 로 운영하던 서버를 **가비아 서버 한 대(앱 + 
    ```bash
    sudo docker stop azit-blue azit-green
    ```
-2. EC2 에서 덤프합니다. RDS 라면 `--set-gtid-purged=OFF` 가 필요합니다.
+2. **덤프 전에** 원본 DB 의 `DEFINER` 계정을 확인합니다. 덤프에 들어가는 뷰/루틴/트리거/이벤트는 원래 DEFINER 를 그대로 유지합니다. 그래서 가비아에 없는 계정이 DEFINER 이면 그 객체를 실행할 때 실패합니다.
+   ```sql
+   SELECT DISTINCT DEFINER FROM information_schema.VIEWS    WHERE TABLE_SCHEMA = '<DB명>'
+   UNION SELECT DISTINCT DEFINER FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = '<DB명>'
+   UNION SELECT DISTINCT DEFINER FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = '<DB명>'
+   UNION SELECT DISTINCT DEFINER FROM information_schema.EVENTS   WHERE EVENT_SCHEMA = '<DB명>';
+   ```
+   - 결과가 없거나 `<GABIA_DB_USERNAME>@%` 만 나오면 그대로 진행합니다(가비아에서 같은 이름으로 `%` 호스트 계정이 만들어짐).
+   - 다른 계정이 나오면, 복원하기 전에 덤프의 DEFINER 를 앱 계정으로 바꿉니다.
+     ```bash
+     sed -E -i.bak 's/DEFINER=`[^`]+`@`[^`]+`/DEFINER=`<GABIA_DB_USERNAME>`@`%`/g' azit.sql
+     ```
+3. EC2 에서 덤프합니다. RDS 라면 `--set-gtid-purged=OFF` 가 필요합니다.
    ```bash
    mysqldump -h <기존DB호스트> -u <계정> -p \
      --single-transaction --routines --triggers --events \
      --set-gtid-purged=OFF --default-character-set=utf8mb4 \
      <DB명> > azit.sql
    ```
-3. 가비아로 전송합니다(`scp azit.sql ubuntu@<가비아IP>:~/app/`).
-4. 가비아에서 root 로 복원합니다(DEFINER 권한 문제 방지).
+4. 가비아로 전송합니다(`scp azit.sql ubuntu@<가비아IP>:~/app/`).
+5. 가비아에서 root 로 복원합니다. 다른 계정이 DEFINER 인 객체를 만들려면 root 권한이 필요합니다.
    ```bash
    cd ~/app
    sudo docker exec -i azit-mysql sh -c 'exec mysql -uroot -p"$MYSQL_ROOT_PASSWORD" "$MYSQL_DATABASE"' < azit.sql
    ```
-5. 앱 계정 권한을 확인합니다(기본적으로 `MYSQL_DATABASE` 에 전체 권한이 있음).
-6. 검증: 주요 테이블의 `COUNT(*)` 와 최근 레코드를 원본과 비교합니다. `SELECT @@global.time_zone;` 도 원본과 비교합니다. 다르면 `docker-compose.gabia.yml` 의 `command` 에 `--default-time-zone=...` 을 추가합니다.
-7. 앱 재시작 (커넥션 풀 초기화)
+6. 앱 계정 권한을 확인합니다(기본적으로 `MYSQL_DATABASE` 에 전체 권한이 있음).
+7. 검증: 주요 테이블의 `COUNT(*)` 와 최근 레코드를 원본과 비교합니다. `SELECT @@global.time_zone;` 도 원본과 비교합니다. 다르면 `docker-compose.gabia.yml` 의 `command` 에 `--default-time-zone=...` 을 추가합니다.
+8. 앱 재시작 (커넥션 풀 초기화)
    ```bash
    sudo docker restart azit-blue   # 또는 azit-green (실행 중인 쪽)
    ```
@@ -141,9 +157,27 @@ AWS EC2 + 외부 DB 로 운영하던 서버를 **가비아 서버 한 대(앱 + 
 
 ## 8. 가비아 운영 중 백업
 
-MySQL 이 앱과 같은 서버에 있으므로 백업을 직접 챙겨야 합니다. 예: 매일 새벽 덤프, 7일 보관 (`crontab -e`)
+MySQL 이 앱과 같은 서버에 있으므로 백업을 직접 챙겨야 합니다. 예: 매일 새벽 덤프, 7일 보관.
+덤프가 실패했는데 빈 파일이 백업으로 남고 이전 백업까지 지워지는 일을 막기 위해, 덤프가 성공했을 때만 파일을 확정하고 정리합니다.
+
+`/home/ubuntu/app/backup.sh`
+```bash
+#!/bin/bash
+set -euo pipefail
+cd /home/ubuntu/app
+mkdir -p backup
+target="backup/azit-$(date +%F).sql.gz"
+tmp="$target.tmp"
+trap 'rm -f "$tmp"' EXIT
+
+sudo docker exec azit-mysql sh -c 'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers --events "$MYSQL_DATABASE"' | gzip > "$tmp"
+gzip -t "$tmp"   # 압축 파일이 깨지지 않았는지 확인
+mv "$tmp" "$target"
+find backup -name 'azit-*.sql.gz' -mtime +7 -delete
 ```
-0 4 * * * cd /home/ubuntu/app && mkdir -p backup && sudo docker exec azit-mysql sh -c 'exec mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --single-transaction --routines --triggers --events "$MYSQL_DATABASE"' | gzip > backup/azit-$(date +\%F).sql.gz && find backup -name '*.sql.gz' -mtime +7 -delete
+```bash
+chmod +x ~/app/backup.sh
+(crontab -l 2>/dev/null; echo '0 4 * * * /home/ubuntu/app/backup.sh >> /home/ubuntu/app/logs/backup.log 2>&1') | crontab -
 ```
 서버 장애에 대비하려면 백업 파일을 서버 밖(S3 등)으로도 옮겨 두세요.
 
@@ -155,9 +189,9 @@ MySQL 이 앱과 같은 서버에 있으므로 백업을 직접 챙겨야 합니
    ```bash
    sudo docker stop azit-blue azit-green
    ```
-2. 가비아 MySQL 덤프 (6단계의 덤프 명령을 `docker exec` 로 실행)
-3. 원본 DB(RDS 또는 EC2 MySQL)에 복원합니다. 이전 기간의 데이터로 덮어쓰는 것이므로 원본 DB 를 먼저 스냅샷으로 백업해 둡니다.
-4. EC2 시작 → 퍼블릭 IP 가 바뀌었으면 `EC2_HOST` 시크릿을 갱신합니다(EIP 를 쓰면 그대로).
+2. 가비아 MySQL 덤프 (8단계 `backup.sh` 의 덤프 명령)
+3. EC2 시작 → 퍼블릭 IP 가 바뀌었으면 `EC2_HOST` 시크릿을 갱신합니다(EIP 를 쓰면 그대로). 원본 DB 가 RDS 이고 중지 상태였다면 RDS 도 시작합니다.
+4. 원본 DB(RDS 또는 EC2 MySQL)에 복원합니다. 이전 기간의 데이터로 덮어쓰는 것이므로 원본 DB 를 먼저 스냅샷으로 백업해 둡니다.
 5. Actions → **azit-server CD (Deploy)** (기존 `deploy.yml`) 로 배포합니다.
 6. DNS A 레코드를 EC2 로 되돌립니다. Redis 데이터(로그인 세션)도 유지하려면 `~/app/redis-data` 를 다시 복사합니다.
 7. 코드 정리: `deploy-gabia.yml`, `scripts/docker-compose.gabia.yml`, 이 문서, `deploy.yml` 상단 주석 2줄을 삭제합니다. 이번 이전 커밋을 `git revert` 해도 됩니다.
