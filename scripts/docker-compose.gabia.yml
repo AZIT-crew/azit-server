@@ -1,0 +1,60 @@
+# 가비아 임시 이전용 compose 오버라이드 파일
+#
+# docker-compose.yml(AWS 기준) 은 그대로 두고, 가비아에서 추가로 필요한 것만 덧붙임
+#  - MySQL 컨테이너 (AWS 에서는 외부 DB 사용)
+#  - 앱 컨테이너가 MySQL 기동(healthy) 이후에 뜨도록 의존성 추가
+#
+# 적용 방식: deploy-gabia.yml 이 서버의 .env 에 COMPOSE_FILE=docker-compose.yml:docker-compose.gabia.yml 을 넣어
+#           deploy.sh 의 `docker compose ...` 명령이 두 파일을 함께 읽도록 함 (deploy.sh 수정 없음)
+# AWS 복귀 시: 이 파일과 deploy-gabia.yml 만 삭제하면 됨 (docs/gabia-migration.md 참고)
+
+services:
+  mysql:
+    # 기존 DB 와 메이저/마이너 버전을 맞출 것 (덤프 호환성), 기본값은 8.0
+    image: mysql:${MYSQL_VERSION:-8.0}
+    container_name: azit-mysql
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Seoul
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      # 최초 기동(빈 데이터 디렉터리) 시에만 앱 계정이 생성됨
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --performance-schema=OFF
+    volumes:
+      # sudo 실행 시 ~ 가 /root 로 해석되므로 절대 경로 사용함
+      - /home/ubuntu/app/mysql-data:/var/lib/mysql
+    # 외부 포트는 열지 않음 (앱은 azit-network 내부의 mysql:3306 으로 접속)
+    healthcheck:
+      # 초기화 중에는 TCP 가 닫혀 있어 실제 서버가 뜬 뒤에만 성공함
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - azit-network
+
+  azit-blue:
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  azit-green:
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  azit-dev:
+    depends_on:
+      mysql:
+        condition: service_healthy
