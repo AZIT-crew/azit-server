@@ -1,3 +1,5 @@
+# AWS EC2 배포 워크플로 (가비아 임시 이전 기간에는 deploy-gabia.yml 사용)
+# AWS 복귀 시 이 파일을 그대로 다시 사용하면 되므로 수정하지 않고 보존함 (docs/gabia-migration.md 참고)
 name: azit-server CD (Deploy)
 run-name: azit server deployed to (${{ github.event.inputs.profile }}) by @${{ github.actor }}
 

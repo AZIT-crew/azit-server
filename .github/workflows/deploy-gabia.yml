@@ -1,0 +1,173 @@
+# 가비아 임시 서버 배포 워크플로
+#
+# deploy.yml(AWS EC2) 을 기준으로 아래만 바꾼 복사본
+#  - SSH(scp/ssh-action) + AWS 보안그룹 열기/닫기 대신, 가비아 서버의 self-hosted runner 에서 직접 배포
+#  - AWS 용 EC2_* / DB_* 시크릿은 복귀를 위해 그대로 보존하고 가비아 값은 GABIA_* 시크릿 사용
+#  - DB 는 서버 내 MySQL 컨테이너 사용 → GABIA_DB_* 시크릿 + docker-compose.gabia.yml 오버라이드
+# AWS 복귀 시: 이 파일과 scripts/docker-compose.gabia.yml 을 삭제하고 deploy.yml 로 배포 (docs/gabia-migration.md 참고)
+# 주의: deploy.yml 과 공통인 부분(.env 항목 등)을 고칠 때는 두 파일을 함께 수정할 것
+
+name: azit-server CD (Deploy - Gabia)
+run-name: azit server deployed to gabia (${{ github.event.inputs.profile }}) by @${{ github.actor }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: '적용할 프로파일 선택'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+        default: 'dev'
+      version:
+        description: '배포 버전 입력 (예: v1.0.0)'
+        required: true
+        type: string
+        default: 'latest'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build with Gradle
+        run: |
+          chmod +x gradlew
+          ./gradlew clean build -x test
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/azit-server:${{ github.event.inputs.version }}
+            ${{ secrets.DOCKER_USERNAME }}/azit-server:${{ github.sha }}
+
+  # 가비아 서버에 설치한 self-hosted runner 에서 직접 실행 (SSH 미사용 → 22번은 관리자 IP 만 허용)
+  # public 레포이므로 러너 보호 설정을 반드시 함께 적용할 것 (docs/gabia-migration.md 3-1 참고)
+  #  - environment 승인: prod 에 Required reviewers 설정 → 승인 전에는 운영 러너에서 아무것도 실행되지 않음
+  #  - 포크 PR 워크플로 승인 필수, 러너 그룹 접근 제한
+  # dev / prod 는 서버가 다르므로 러너 라벨로 구분 (gabia-dev / gabia-prod), 라벨이 섞이면 다른 서버에 배포되니 주의
+  deploy:
+    needs: build-and-push
+    runs-on: [ self-hosted, "gabia-${{ github.event.inputs.profile }}" ]
+    # deploy.yml 과 동일하게 dev 는 environment 없이(레포 시크릿), prod 는 prod environment(승인 + prod 시크릿)
+    environment: ${{ github.event.inputs.profile == 'prod' && 'prod' || '' }}
+    concurrency:
+      group: gabia-deploy-${{ github.event.inputs.profile }} # 같은 서버에 배포가 동시에 돌지 않도록 직렬화
+      cancel-in-progress: false
+    env:
+      APP_DIR: /home/ubuntu/app
+      # 입력값은 스크립트에 직접 끼워 넣지 않고 환경변수로 전달 (운영 서버에서 실행되므로 명령 주입 방지)
+      INPUT_PROFILE: ${{ github.event.inputs.profile }}
+      INPUT_VERSION: ${{ github.event.inputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Inputs
+        run: |
+          if ! [[ "$INPUT_VERSION" =~ ^[A-Za-z0-9._-]{1,128}$ ]]; then
+            echo "❌ 잘못된 버전 형식입니다: $INPUT_VERSION"
+            exit 1
+          fi
+
+      - name: Copy deploy files
+        run: |
+          mkdir -p "$APP_DIR"
+          cp scripts/deploy.sh scripts/docker-compose.yml scripts/docker-compose.gabia.yml "$APP_DIR"/
+
+      - name: Deploy
+        run: |
+            set -e # 명령어 하나라도 실패하면 즉시 스크립트 중단 및 액션 실패 처리
+            cd "$APP_DIR"
+            umask 077 # .env 는 러너 계정만 읽을 수 있게 생성
+            # .env 파일 생성
+            # COMPOSE_FILE: deploy.sh 의 docker compose 명령이 가비아 오버라이드(MySQL)까지 함께 읽도록 함
+            cat <<EOF > .env
+            COMPOSE_FILE=docker-compose.yml:docker-compose.gabia.yml
+            TARGET_PROFILE=${INPUT_PROFILE}
+            IMAGE_TAG=${INPUT_VERSION}
+            DB_URL=${{ secrets.GABIA_DB_URL }}
+            DB_USERNAME=${{ secrets.GABIA_DB_USERNAME }}
+            DB_PASSWORD=${{ secrets.GABIA_DB_PASSWORD }}
+            MYSQL_ROOT_PASSWORD=${{ secrets.GABIA_MYSQL_ROOT_PASSWORD }}
+            MYSQL_DATABASE=${{ secrets.GABIA_MYSQL_DATABASE }}
+            MYSQL_VERSION=${{ secrets.GABIA_MYSQL_VERSION }}
+            DOCKER_USERNAME=${{ secrets.DOCKER_USERNAME }}
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+            AWS_S3_ACCESS_KEY=${{ secrets.AWS_S3_ACCESS_KEY }}
+            AWS_S3_SECRET_KEY=${{ secrets.AWS_S3_SECRET_KEY }}
+            KAKAO_REST_API_KEY=${{ secrets.KAKAO_REST_API_KEY }}
+            KAKAO_CLIENT_SECRET=${{ secrets.KAKAO_CLIENT_SECRET }}
+            KAKAO_ADMIN_KEY=${{ secrets.KAKAO_ADMIN_KEY }}
+            KAKAO_REDIRECT_URL=${{ secrets.KAKAO_REDIRECT_URL }}
+            JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+            JWT_ACCESS_EXPIRATION=${{ secrets.JWT_ACCESS_EXPIRATION }}
+            JWT_REFRESH_EXPIRATION=${{ secrets.JWT_REFRESH_EXPIRATION }}
+            APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}
+            APPLE_SERVICE_ID=${{ secrets.APPLE_SERVICE_ID }}
+            APPLE_KEY_ID=${{ secrets.APPLE_KEY_ID }}
+            APPLE_KEY_PATH=${{ secrets.APPLE_KEY_PATH }}
+            APPLE_REDIRECT_URL=${{ secrets.APPLE_REDIRECT_URL }}
+            PAYMENT_BANK_NAME=${{ secrets.PAYMENT_BANK_NAME }}
+            PAYMENT_BANK_ACCOUNT_NUMBER=${{ secrets.PAYMENT_BANK_ACCOUNT_NUMBER }}
+            PAYMENT_BANK_ACCOUNT_HOLDER=${{ secrets.PAYMENT_BANK_ACCOUNT_HOLDER }}
+            NAVER_CLIENT_ID=${{ secrets.NAVER_CLIENT_ID }}
+            NAVER_CLIENT_SECRET=${{ secrets.NAVER_CLIENT_SECRET }}
+            NEW_RELIC_LICENSE_KEY=${{ secrets.NEW_RELIC_LICENSE_KEY }}
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+            EOF
+
+            sudo docker pull "${{ secrets.DOCKER_USERNAME }}/azit-server:${INPUT_VERSION}"
+
+            if [ "$INPUT_PROFILE" == "prod" ]; then
+                echo "🎯 [운영 서버 - 가비아] 무중단 배포 스크립트를 실행합니다."
+                chmod +x deploy.sh
+                ./deploy.sh
+            else
+                echo "🛠️ [개발 서버 - 가비아] 컨테이너를 교체합니다."
+                sudo docker compose up -d azit-dev
+            fi
+
+            # -a 는 redis:latest 같은 보조 이미지까지 지울 수 있어 dangling 만 정리함
+            sudo docker image prune -f
+
+  notify:
+    needs: [ build-and-push, deploy ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Discord Notification
+        uses: sarisia/actions-status-discord@v1
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          noprefix: true
+          status: ${{ needs.build-and-push.result == 'success' && needs.deploy.result == 'success' && 'success' || 'failure' }}
+          title: "🚀 azit-server 배포 결과 (가비아)"
+          description: |
+            **배포 환경:** `${{ github.event.inputs.profile }}` (가비아)
+            **버전:** `${{ github.event.inputs.version }}`
+            **결과:** ${{ (needs.build-and-push.result == 'success' && needs.deploy.result == 'success') && '✅ 성공' || '❌ 실패' }}
+            **로그:** [GitHub Actions](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          color: ${{ (needs.build-and-push.result == 'success' && needs.deploy.result == 'success') && '0x00ff00' || '0xff0000' }}
